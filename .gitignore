@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Datenbank (persönliche Daten — niemals committen!)
+reports/
+data/
+*.db
+*.sqlite
+
+# Umgebungsvariablen (Secrets)
+.env
+.env.local
+
+# macOS
+.DS_Store
+*.command
+
+# IDE
+.vscode/
+.idea/
+
+

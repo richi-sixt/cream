@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>💰 cream · Finanzen</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a; --border:#2e3352;
+    --text:#e8eaf6; --muted:#8b91b8; --green:#4caf87; --red:#e05c6a;
+    --yellow:#f0a500; --orange:#e07840; --blue:#5b8af0; --purple:#9c6ef0;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}
+
+  /* Header */
+  header{background:linear-gradient(135deg,#1a1d27,#22263a);border-bottom:1px solid var(--border);padding:18px 32px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+  header h1{font-size:20px;font-weight:700}
+  header .meta{color:var(--muted);font-size:12px;margin-top:2px}
+  .header-actions{display:flex;gap:8px;align-items:center}
+  .btn{padding:8px 16px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s}
+  .btn:hover{opacity:.85} .btn:disabled{opacity:.5;cursor:default}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-sm{padding:5px 12px;font-size:12px}
+
+  /* KPI-Bar */
+  .kpi-bar{display:flex;gap:12px;padding:18px 32px;flex-wrap:wrap}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;flex:1;min-width:170px}
+  .kpi label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.8px}
+  .kpi .val{font-size:20px;font-weight:700;margin-top:4px}
+  .kpi.blue .val{color:var(--blue)} .kpi.green .val{color:var(--green)}
+  .kpi.red .val{color:var(--red)}   .kpi.purple .val{color:var(--purple)}
+
+  /* Tabs */
+  .tabs{display:flex;gap:4px;padding:0 32px;border-bottom:1px solid var(--border)}
+  .tab-btn{padding:11px 22px;background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--blue);font-weight:600}
+  .tab-content{display:none;padding:22px 32px}
+  .tab-content.active{display:block}
+
+  /* Chart */
+  #chart-container{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:18px}
+
+  /* Monats-Akkordeon */
+  .monat-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+  .monat-header{width:100%;background:none;border:none;color:var(--text);padding:12px 16px;display:flex;align-items:center;gap:14px;cursor:pointer;font-size:14px;text-align:left}
+  .monat-header:hover{background:var(--surface2)}
+  .monat-name{font-weight:600;min-width:120px}
+  .monat-stats{display:flex;gap:14px;flex:1}
+  .monat-stats .ein{color:var(--green)} .monat-stats .aus{color:var(--red)}
+  .monat-stats .netto{font-weight:600}
+  .netto.pos{color:var(--green)} .netto.neg{color:var(--red)}
+  .chevron{margin-left:auto;transition:transform .2s}
+  .monat-header.open .chevron{transform:rotate(180deg)}
+  .monat-body{display:none}
+
+  /* Buchungstabelle */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:var(--surface2);padding:8px 12px;text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border)}
+  td{padding:7px 12px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .td-desc{color:var(--muted);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .td-betrag{text-align:right;white-space:nowrap;font-weight:500}
+  .td-saldo{text-align:right;color:var(--muted);font-size:12px}
+  .td-edit{text-align:center;width:40px}
+  .edit-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px}
+  .edit-btn:hover{color:var(--text);border-color:var(--blue)}
+
+  /* Rechnungskarten */
+  .rechnung-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+  .rechnung-header{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .rechnung-title{font-size:15px;font-weight:600;margin-bottom:3px}
+  .rechnung-meta{color:var(--muted);font-size:12px;display:flex;gap:14px;flex-wrap:wrap}
+  .rechnung-betrag{font-size:20px;font-weight:700;color:var(--red);white-space:nowrap}
+  .rechnung-body{display:flex}
+  .rechnung-info{padding:14px 18px;flex:1;display:flex;flex-direction:column;gap:10px}
+  .info-row{display:flex;gap:10px;align-items:center}
+  .info-label{color:var(--muted);font-size:12px;min-width:75px}
+
+  /* PDF-Button */
+  .btn-pdf{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;transition:border-color .2s,background .2s}
+  .btn-pdf:hover{border-color:var(--blue);background:#1c2035}
+
+  /* Badges */
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge-red{background:rgba(224,92,106,.2);color:var(--red)}
+  .badge-orange{background:rgba(224,120,64,.2);color:var(--orange)}
+  .badge-yellow{background:rgba(240,165,0,.2);color:var(--yellow)}
+  .badge-green{background:rgba(76,175,135,.2);color:var(--green)}
+  .badge-gray{background:rgba(139,145,184,.2);color:var(--muted)}
+
+  /* Status-Select */
+  .status-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer}
+
+  /* Toast-Meldung */
+  #toast{position:fixed;bottom:24px;right:24px;background:#22263a;border:1px solid var(--border);color:var(--text);padding:12px 20px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}
+  #toast.show{opacity:1}
+
+  .empty{color:var(--muted);padding:40px;text-align:center;font-size:15px}
+
+  /* E-Banking Detailpositionen */
+  .detail-toggle{background:none;border:1px solid var(--border);color:var(--blue);padding:2px 7px;border-radius:5px;cursor:pointer;font-size:11px;white-space:nowrap}
+  .detail-toggle:hover{background:rgba(91,138,240,.1)}
+  .tx-detail-row td{padding:0}
+  .lines-table{width:100%;border-collapse:collapse;background:rgba(91,138,240,.05)}
+  .lines-table td{padding:5px 12px;border-bottom:1px solid var(--border);font-size:12px}
+  .lines-table tr:last-child td{border-bottom:none}
+  .lines-table .lt-amount{text-align:right;font-weight:600;color:var(--red);white-space:nowrap}
+  .lines-table .lt-iban{color:var(--muted);font-size:11px;font-family:monospace}
+
+  /* Filter-Leiste */
+  .filter-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  .filter-bar select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:13px;cursor:pointer;min-width:160px}
+  .filter-bar select:hover{border-color:var(--blue)}
+  .filter-bar select:focus{outline:none;border-color:var(--blue)}
+  .filter-reset{background:none;border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;white-space:nowrap}
+  .filter-reset:hover{border-color:var(--red);color:var(--red)}
+  .filter-label{color:var(--muted);font-size:12px;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>💰 C.R.E.A.M</h1>
+    <div class="meta">Stand: {{ now.strftime('%d.%m.%Y %H:%M') if now is defined else '' }}</div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-primary" onclick="runImport(this)">🔄 PDFs importieren</button>
+  </div>
+</header>
+
+<div class="kpi-bar">
+  <div class="kpi blue">
+    <label>Kontostand (letzter bekannter)</label>
+    <div class="val">{{ fmt_chf(latest_saldo) }}</div>
+  </div>
+  <div class="kpi green">
+    <label>Einnahmen (alle Auszüge)</label>
+    <div class="val">{{ fmt_chf(months.values()|sum(attribute='income')) if months else '—' }}</div>
+  </div>
+  <div class="kpi red">
+    <label>Ausgaben (alle Auszüge)</label>
+    <div class="val">{{ fmt_chf(months.values()|sum(attribute='expense')) if months else '—' }}</div>
+  </div>
+  <div class="kpi purple">
+    <label>Offene Rechnungen total</label>
+    <div class="val" id="kpi-total">{{ fmt_chf(total_pending) }}</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('bewegungen', this)">📊 Kontobewegungen</button>
+  <button class="tab-btn" onclick="showTab('rechnungen', this)">🧾 Rechnungen ({{ invoices|length }})</button>
+</div>
+
+{# ── BEWEGUNGEN TAB ──────────────────────────────────────────── #}
+<div id="tab-bewegungen" class="tab-content active">
+
+  {# Deutsche Monatsnamen — einmal definiert, in beiden Tabs nutzbar #}
+  {% set MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'] %}
+
+  {# Filter-Leiste Kontobewegungen: Konto + Jahr + Monat #}
+  <form id="filter-form" method="get" action="/" class="filter-bar">
+    <input type="hidden" name="tab" value="bewegungen">
+
+    {% if accounts|length > 1 %}
+      <span class="filter-label">Konto</span>
+      <select name="account_id" onchange="this.form.submit()">
+        <option value="">Alle Konten</option>
+        {% for acc in accounts %}
+          <option value="{{ acc.id }}" {% if selected_account_id == acc.id %}selected{% endif %}>
+            {{ acc.name }}{% if acc.iban %} · {{ acc.iban }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    {% endif %}
+
+    <span class="filter-label">Jahr</span>
+    <select name="tx_year" onchange="this.form.submit()">
+      <option value="">Alle Jahre</option>
+      {% for yr in available_tx_years %}
+        <option value="{{ yr }}" {% if tx_year == yr %}selected{% endif %}>{{ yr }}</option>
+      {% endfor %}
+    </select>
+
+    <span class="filter-label">Monat</span>
+    <select name="tx_month" onchange="this.form.submit()">
+      <option value="">Alle Monate</option>
+      {% for i in range(1, 13) %}
+        <option value="{{ i }}" {% if tx_month == i|string %}selected{% endif %}>
+          {{ MONATE[i-1] }}
+        </option>
+      {% endfor %}
+    </select>
+
+    {% if selected_account_id or tx_year or tx_month %}
+      <a href="/?tab=bewegungen" class="filter-reset">✕ Filter löschen</a>
+    {% endif %}
+  </form>
+
+  <div id="chart-container">
+    <canvas id="monatsChart" height="80"></canvas>
+  </div>
+
+  {% if not months %}
+    <p class="empty">Noch keine Buchungen importiert. Klicke auf «🔄 PDFs importieren».</p>
+  {% else %}
+    {% for month_key, data in months.items() %}
+      {% set d = month_key + '-01' %}
+      {% set netto = data.income - data.expense %}
+      <div class="monat-block">
+        <button class="monat-header{% if loop.first %} open{% endif %}"
+                onclick="toggleMonat(this)">
+          <span class="monat-name">{{ month_key|month_label }}</span>
+          <span class="monat-stats">
+            <span class="ein">+{{ fmt_chf(data.income) }}</span>
+            <span class="aus">-{{ fmt_chf(data.expense) }}</span>
+            <span class="netto {{ 'pos' if netto >= 0 else 'neg' }}">={{ fmt_chf(netto|abs) }}</span>
+          </span>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="monat-body" {% if not loop.first %}style="display:none"{% endif %}>
+          <table>
+            <thead>
+              <tr><th>Datum</th><th>Buchungstext</th><th>Betrag</th><th>Saldo</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for tx in data.transactions %}
+              <tr data-id="{{ tx.id }}">
+                <td>{{ tx.date.strftime('%d.%m.%Y') }}</td>
+                <td class="td-desc" title="{{ tx.raw_description }}">
+                  {{ tx.display_title }}
+                  {% if tx.lines %}
+                    <button class="detail-toggle" data-count="{{ tx.lines|length }}" onclick="toggleLines({{ tx.id }}, this)">
+                      ▶ {{ tx.lines|length }} Positionen
+                    </button>
+                  {% endif %}
+                </td>
+                <td class="td-betrag" style="color:{{ 'var(--green)' if tx.type=='income' else 'var(--red)' }}">
+                  {{ '🟢' if tx.type=='income' else '🔴' }} {{ fmt_chf(tx.amount) }}
+                </td>
+                <td class="td-saldo">{{ fmt_chf(tx.saldo) if tx.saldo else '—' }}</td>
+                <td class="td-edit">
+                  <button class="edit-btn" onclick="editTransaction({{ tx.id }}, '{{ tx.display_title|e }}')">✏️</button>
+                </td>
+              </tr>
+              {% if tx.lines %}
+              <tr class="tx-detail-row" id="lines-{{ tx.id }}" style="display:none">
+                <td colspan="5">
+                  <table class="lines-table">
+                    {% for line in tx.lines %}
+                    <tr>
+                      <td>{{ line.recipient }}</td>
+                      <td class="lt-amount">{{ fmt_chf(line.amount) }}</td>
+                      <td class="lt-iban">{{ line.iban or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                  </table>
+                </td>
+              </tr>
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+{# ── RECHNUNGEN TAB ──────────────────────────────────────────── #}
+<div id="tab-rechnungen" class="tab-content">
+
+  {# Filter-Leiste Rechnungen: Status + Jahr + Monat (separat, analog Kontobewegungen) #}
+  <form id="inv-filter-form" method="get" action="/" class="filter-bar">
+    <input type="hidden" name="tab" value="rechnungen">
+    {% set MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'] %}
+
+    <span class="filter-label">Status</span>
+    <select name="inv_status" onchange="this.form.submit()">
+      <option value="pending" {% if inv_status == 'pending' %}selected{% endif %}>⏳ Offen</option>
+      <option value="paid"    {% if inv_status == 'paid'    %}selected{% endif %}>✅ Bezahlt</option>
+      <option value=""        {% if inv_status == ''        %}selected{% endif %}>📋 Alle</option>
+    </select>
+
+    <span class="filter-label">Jahr</span>
+    <select name="inv_year" onchange="this.form.submit()">
+      <option value="">Alle Jahre</option>
+      {% for yr in available_inv_years %}
+        <option value="{{ yr }}" {% if inv_year == yr %}selected{% endif %}>{{ yr }}</option>
+      {% endfor %}
+    </select>
+
+    <span class="filter-label">Monat</span>
+    <select name="inv_month" onchange="this.form.submit()">
+      <option value="">Alle Monate</option>
+      {% for i in range(1, 13) %}
+        <option value="{{ i }}" {% if inv_month == i|string %}selected{% endif %}>
+          {{ MONATE[i-1] }}
+        </option>
+      {% endfor %}
+    </select>
+
+    {% if inv_year or inv_month %}
+      <a href="/?tab=rechnungen&inv_status={{ inv_status }}" class="filter-reset">✕ Filter löschen</a>
+    {% endif %}
+  </form>
+
+  {% if not invoices %}
+    <p class="empty">Keine Rechnungen gefunden.</p>
+  {% else %}
+    {% for inv in invoices %}
+    <div class="rechnung-card" id="inv-{{ inv.id }}" data-amount="{{ inv.amount or 0 }}">
+      <div class="rechnung-header">
+        <div>
+          <div class="rechnung-title">{{ inv.display_title }}</div>
+          <div class="rechnung-meta">
+            <span>📄 {{ inv.filename }}</span>
+            {% if inv.invoice_date %}<span>Datum: {{ inv.invoice_date.strftime('%d.%m.%Y') }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="rechnung-betrag" id="inv-header-amount-{{ inv.id }}">{{ fmt_chf(inv.amount) }}</div>
+      </div>
+      <div class="rechnung-body">
+        <div class="rechnung-info">
+          <div class="info-row">
+            <span class="info-label">Betrag</span>
+            <span id="inv-amount-{{ inv.id }}" style="font-weight:600;color:var(--red)">{{ fmt_chf(inv.amount) }}</span>
+            <button class="edit-btn btn-sm" onclick="editInvoiceAmount({{ inv.id }}, {{ inv.amount or 0 }})">✏️</button>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Fällig am</span>
+            <span id="inv-due-{{ inv.id }}">{{ inv.due_date.strftime('%d.%m.%Y') if inv.due_date else '—' }}</span>
+            {% if inv.status == 'paid' %}
+              <span class="badge badge-gray">Bezahlt</span>
+            {% elif inv.days_until_due is not none %}
+              {% if inv.days_until_due < 0 %}
+                <span class="badge badge-red">Überfällig ({{ (-inv.days_until_due) }}d)</span>
+              {% elif inv.days_until_due <= 7 %}
+                <span class="badge badge-orange">In {{ inv.days_until_due }}d</span>
+              {% elif inv.days_until_due <= 30 %}
+                <span class="badge badge-yellow">In {{ inv.days_until_due }}d</span>
+              {% else %}
+                <span class="badge badge-green">In {{ inv.days_until_due }}d</span>
+              {% endif %}
+            {% else %}
+              <span class="badge badge-gray">Kein Datum</span>
+            {% endif %}
+            <button class="edit-btn btn-sm" onclick="editInvoiceDueDate({{ inv.id }}, '{{ inv.due_date.strftime('%Y-%m-%d') if inv.due_date else '' }}')">✏️</button>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Status</span>
+            <select class="status-select" onchange="updateInvoiceStatus({{ inv.id }}, this.value)">
+              <option value="pending" {% if inv.status=='pending' %}selected{% endif %}>⏳ Offen</option>
+              <option value="paid"    {% if inv.status=='paid'    %}selected{% endif %}>✅ Bezahlt</option>
+            </select>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Titel</span>
+            <button class="edit-btn btn-sm" onclick="editInvoiceTitle({{ inv.id }}, '{{ inv.display_title|e }}')">✏️ Korrigieren</button>
+          </div>
+        </div>
+        <div style="padding:14px 18px;border-left:1px solid var(--border);display:flex;align-items:center">
+          <button class="btn-pdf" onclick="openPdf('{{ inv.filename|e }}')">
+            📄 PDF öffnen
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+<div id="toast"></div>
+
+<script>
+// Hilfsfunktionen
+function fmt(v){return v==null?'—':'CHF '+v.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function toast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.background=ok?'#1a2a1a':'#2a1a1a';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000)}
+
+function showTab(name, btn){
+  document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(e=>e.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+  // Tab-Zustand in URL schreiben (kein Reload)
+  const url=new URL(window.location);
+  url.searchParams.set('tab', name);
+  history.replaceState({}, '', url);
+}
+
+// Beim Laden: Tab aus URL-Parameter wiederherstellen
+(function(){
+  const tab=new URL(window.location).searchParams.get('tab');
+  if(tab==='rechnungen'){
+    const btns=document.querySelectorAll('.tab-btn');
+    showTab('rechnungen', btns[1]);
+  }
+})();
+
+// E-Banking Detailpositionen ein-/ausklappen
+function toggleLines(id, btn){
+  const row=document.getElementById('lines-'+id);
+  const open=row.style.display==='table-row';
+  row.style.display=open?'none':'table-row';
+  const n=btn.dataset.count;
+  btn.textContent=(open?'▶ ':'▼ ')+n+' Positionen';
+}
+
+function toggleMonat(btn){
+  const body=btn.nextElementSibling;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  btn.classList.toggle('open',!open);
+}
+
+// PDF-Import
+async function runImport(btn){
+  btn.disabled=true; btn.textContent='⏳ Importiere…';
+  try{
+    const r=await fetch('/import',{method:'POST'});
+    const d=await r.json();
+    const s=d.stats;
+    toast(`✅ Import: ${s.transactions.imported} neue Buchungen, ${s.invoices.imported} neue Rechnungen`);
+    setTimeout(()=>window.location.reload(),1500);
+  }catch(e){
+    toast('❌ Import fehlgeschlagen',false);
+    btn.disabled=false; btn.textContent='🔄 PDFs importieren';
+  }
+}
+
+// Buchungs-Titel bearbeiten
+async function editTransaction(id, currentTitle){
+  const neu=prompt('Titel korrigieren:', currentTitle);
+  if(neu===null) return;
+  const r=await fetch(`/api/transactions/${id}`,{
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({title:neu||null})
+  });
+  if(r.ok){
+    const d=await r.json();
+    const row=document.querySelector(`tr[data-id="${id}"] .td-desc`);
+    if(row) row.textContent=d.display_title;
+    toast('✅ Titel gespeichert');
+  } else toast('❌ Fehler',false);
+}
+
+// Rechnungs-Titel bearbeiten
+async function editInvoiceTitle(id, currentTitle){
+  const neu=prompt('Titel korrigieren:', currentTitle);
+  if(neu===null) return;
+  const r=await fetch(`/api/invoices/${id}`,{
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({title:neu||null})
+  });
+  if(r.ok){
+    const d=await r.json();
+    const card=document.getElementById(`inv-${id}`);
+    if(card) card.querySelector('.rechnung-title').textContent=d.display_title;
+    toast('✅ Titel gespeichert');
+  } else toast('❌ Fehler',false);
+}
+
+// Total aller offenen Rechnungen neu berechnen
+function recalcTotal(){
+  let sum=0;
+  document.querySelectorAll('.rechnung-card').forEach(card=>{
+    sum+=parseFloat(card.dataset.amount||0);
+  });
+  const el=document.getElementById('kpi-total');
+  if(el) el.textContent='CHF '+sum.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+// Rechnungs-Betrag bearbeiten
+async function editInvoiceAmount(id, currentAmount){
+  const neu=prompt('Betrag korrigieren (CHF):', currentAmount||'');
+  if(neu===null) return;
+  const parsed=neu ? parseFloat(neu.replace(',','.').replace(/'/g,'').replace(/ /g,'')) : null;
+  const r=await fetch(`/api/invoices/${id}`,{
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({amount: parsed})
+  });
+  if(r.ok){
+    const d=await r.json();
+    const newAmt=d.amount||0;
+    const fmtAmt=newAmt ? 'CHF '+newAmt.toLocaleString('de-CH',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    // Inline-Betrag aktualisieren
+    const el=document.getElementById(`inv-amount-${id}`);
+    if(el) el.textContent=fmtAmt;
+    // Karten-Header aktualisieren
+    const hdr=document.getElementById(`inv-header-amount-${id}`);
+    if(hdr) hdr.textContent=fmtAmt;
+    // data-amount auf Karte setzen → Total korrekt
+    const card=document.getElementById(`inv-${id}`);
+    if(card) card.dataset.amount=newAmt;
+    recalcTotal();
+    toast('✅ Betrag gespeichert');
+  } else toast('❌ Fehler',false);
+}
+
+// Rechnungs-Fälligkeit bearbeiten
+async function editInvoiceDueDate(id, currentDate){
+  const neu=prompt('Fälligkeitsdatum (TT.MM.JJJJ):', currentDate ? currentDate.split('-').reverse().join('.') : '');
+  if(neu===null) return;
+  let isoDate=null;
+  if(neu.trim()){
+    const parts=neu.trim().split('.');
+    if(parts.length===3) isoDate=`${parts[2].length===2?'20'+parts[2]:parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+    if(!isoDate || isNaN(Date.parse(isoDate))){ toast('❌ Ungültiges Datum (TT.MM.JJJJ)',false); return; }
+  }
+  const r=await fetch(`/api/invoices/${id}`,{
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({due_date: isoDate})
+  });
+  if(r.ok){
+    const d=await r.json();
+    const el=document.getElementById(`inv-due-${id}`);
+    if(el && d.due_date) el.textContent=d.due_date.split('-').reverse().join('.');
+    else if(el) el.textContent='—';
+    toast('✅ Datum gespeichert');
+  } else toast('❌ Fehler',false);
+}
+
+// PDF im Standard-Programm öffnen
+async function openPdf(filename){
+  try{
+    const r=await fetch(`/open-pdf/${encodeURIComponent(filename)}`);
+    if(r.ok) toast('📄 PDF geöffnet');
+    else toast('❌ PDF nicht gefunden',false);
+  }catch(e){toast('❌ Fehler beim Öffnen',false);}
+}
+
+// Rechnungs-Status ändern
+async function updateInvoiceStatus(id, status){
+  const r=await fetch(`/api/invoices/${id}`,{
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({status})
+  });
+  if(r.ok) toast(`✅ Status auf «${status}» gesetzt`);
+  else toast('❌ Fehler',false);
+}
+
+// Chart
+(function(){
+  const months = {{ chart_data|tojson }};
+  const ctx=document.getElementById('monatsChart').getContext('2d');
+  new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:months.labels,
+      datasets:[
+        {label:'Einnahmen',data:months.income,backgroundColor:'rgba(76,175,135,.7)',borderRadius:4},
+        {label:'Ausgaben', data:months.expense,backgroundColor:'rgba(224,92,106,.7)', borderRadius:4},
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{labels:{color:'#8b91b8'}}},
+      scales:{
+        x:{ticks:{color:'#8b91b8'},grid:{color:'#2e3352'}},
+        y:{ticks:{color:'#8b91b8',callback:v=>'CHF '+v.toLocaleString('de-CH')},grid:{color:'#2e3352'}},
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

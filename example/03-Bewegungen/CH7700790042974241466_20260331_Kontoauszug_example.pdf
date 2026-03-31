@@ -1,0 +1,50 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 425 >>
+stream
+BT
+/F1 12 Tf
+50 780 Td
+(Berner Kantonalbank AG) Tj
+0 -16 Td
+(Privatkonto Plus) Tj
+0 -16 Td
+(IBAN CH77 0079 0042 9742 4146 6 Herr und Frau) Tj
+0 -16 Td
+(Ruechan Beispiel) Tj
+0 -16 Td
+(Kontoauszug per 31.03.2026 Datum:31.03.2026) Tj
+0 -16 Td
+(Datum Buchungstext Belastung Gutschrift Valuta Saldo) Tj
+0 -16 Td
+(31.03.26 Beispiel Einkauf 24.50 31.03.26 1200.00) Tj
+0 -16 Td
+(31.03.26 Beispiel Lohn 2500.00 31.03.26 3700.00) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+787
+%%EOF
