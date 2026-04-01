@@ -12,26 +12,22 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
 endobj
 5 0 obj
-<< /Length 425 >>
+<< /Length 203 >>
 stream
 BT
 /F1 12 Tf
 50 780 Td
-(Berner Kantonalbank AG) Tj
+(Dummy Paid Invoice) Tj
 0 -16 Td
-(Privatkonto Plus) Tj
+(Rechnungsdatum 31.03.2026) Tj
 0 -16 Td
-(IBAN CH77 0079 0042 9742 4146 6 Herr und Frau) Tj
+(Zahlteil) Tj
 0 -16 Td
-(Ruechan Beispiel) Tj
+(Waehrung Betrag) Tj
 0 -16 Td
-(Kontoauszug per 31.03.2026 Datum:31.03.2026) Tj
+(CHF 89.00) Tj
 0 -16 Td
-(Datum Buchungstext Belastung Gutschrift Valuta Saldo) Tj
-0 -16 Td
-(31.03.26 Beispiel Einkauf 24.50 31.03.26 1200.00) Tj
-0 -16 Td
-(31.03.26 Beispiel Lohn 2500.00 31.03.26 3700.00) Tj
+(Zahlbar bis 15.04.2026) Tj
 ET
 endstream
 endobj
@@ -46,5 +42,5 @@ xref
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-787
+565
 %%EOF

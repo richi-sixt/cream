@@ -8,14 +8,14 @@ from app.importers.bekb import _parse_single_block, _parse_sub_entries
 
 class TestParseSingleBlock:
     def test_extracts_amount_from_end_of_first_line(self):
-        block = ["Mobiliar Versicherung 561.70", "CH5600791234567890123"]
+        block = ["Alpen Versicherung 561.70", "CH5600791234567890123"]
         result = _parse_single_block(block)
         assert result is not None
-        assert result["recipient"] == "Mobiliar Versicherung"
+        assert result["recipient"] == "Alpen Versicherung"
         assert result["amount"] == 561.70
 
     def test_extracts_iban(self):
-        block = ["Helsana 1491.10", "CH5600791234567890124"]
+        block = ["Nordlicht Gesundheit 1491.10", "CH5600791234567890124"]
         result = _parse_single_block(block)
         assert result is not None
         assert result["iban"] == "CH5600791234567890124"
@@ -32,7 +32,7 @@ class TestParseSingleBlock:
 
     def test_merges_hyphenated_names(self):
         block = [
-            "Schweizerische Mobiliar Versiche- 561.70",
+            "Schweizerische Alpen Versiche- 561.70",
             "rungsgesellschaft AG",
             "CH5600791234567890123",
         ]
@@ -62,17 +62,17 @@ class TestParseSubEntries:
     def test_multi_recipient_splits_on_separator_lines(self):
         lines = [
             ".",
-            "Mobiliar 561.70",
+            "Alpenkasse 561.70",
             "CH5600791234567890123",
             ".",
-            "Helsana 1491.10",
+            "Nordlicht 1491.10",
             "CH5600791234567890124",
         ]
         result = _parse_sub_entries(lines, total_amount=2052.80)
         assert len(result) == 2
-        assert result[0]["recipient"] == "Mobiliar"
+        assert result[0]["recipient"] == "Alpenkasse"
         assert result[0]["amount"] == 561.70
-        assert result[1]["recipient"] == "Helsana"
+        assert result[1]["recipient"] == "Nordlicht"
         assert result[1]["amount"] == 1491.10
 
     def test_empty_lines_return_empty_list(self):
@@ -87,37 +87,37 @@ class TestAccountMetadata:
             lambda _: [
                 "Berner Kantonalbank AG",
                 "Finanzierungskonto",
-                "IBAN CH78 0079 0042 9742 4173 9 Herr und Frau",
-                "Hauskonto Sixt Ruechan & Sixt Miona",
-                "Hasenweid 6",
+                "IBAN CH88 0079 0042 9742 4173 9 Herr und Frau",
+                "Hauskonto Alex Beispiel & Robin Beispiel",
+                "Beispielweg 6",
             ],
         )
 
         metadata = bekb.extract_account_metadata(
-            Path("CH7800790042974241739_20220624_0001_Gutschrifts_Belastungsanzeige.pdf")
+            Path("CH8800790042974241739_20220624_0001_Gutschrifts_Belastungsanzeige.pdf")
         )
 
-        assert metadata["iban"] == "CH7800790042974241739"
-        assert metadata["name"] == "BEKB Finanzierungskonto - Hauskonto Sixt Ruechan & Sixt Miona"
+        assert metadata["iban"] == "CH8800790042974241739"
+        assert metadata["name"] == "BEKB Finanzierungskonto - Hauskonto Alex Beispiel & Robin Beispiel"
         assert metadata["type"] == "other"
 
     def test_prefers_configured_account_name(self, monkeypatch, app):
         lines = [
             "Berner Kantonalbank AG",
             "Privatkonto Plus",
-            "IBAN CH77 0079 0042 9742 4146 6 Herr und Frau",
-            "Sixt Ruechan & Sixt Miona",
+            "IBAN CH11 0079 0042 9742 4146 6 Herr und Frau",
+            "Alex Beispiel & Robin Beispiel",
         ]
         monkeypatch.setattr(bekb, "_read_first_page_lines", lambda _: lines)
         with app.app_context():
             app.config["ACCOUNT_NAME_OVERRIDES"] = {
-                "CH7700790042974241466": "BEKB Privatkonto Ruechan"
+                "CH1100790042974241466": "BEKB Privatkonto Beispiel"
             }
             metadata = bekb.extract_account_metadata(
-                Path("CH7700790042974241466_20260131_Kontoauszug.pdf")
+                Path("CH1100790042974241466_20260131_Kontoauszug.pdf")
             )
 
-        assert metadata["name"] == "BEKB Privatkonto Ruechan"
+        assert metadata["name"] == "BEKB Privatkonto Beispiel"
 
 
 class TestBekbNoticeParser:
@@ -129,7 +129,7 @@ class TestBekbNoticeParser:
                 "Gutschriftsanzeige per 24.12.2020 Datum:24.12.2020\n"
                 "Zahlungseingang\n"
                 "Bezahlt von: CHF 1'000.00\n"
-                "Sixt Ruechan & Sixt Miona\n"
+                "Alex Beispiel & Robin Beispiel\n"
                 "Gutschrift\n"
                 "Valuta24.12.2020 CHF 1'000.00\n"
                 "Neuer Saldo\n"
@@ -142,7 +142,7 @@ class TestBekbNoticeParser:
         assert result == [
             {
                 "date": bekb.date_from_ddmmyy("24.12.20"),
-                "description": "Zahlungseingang: Sixt Ruechan & Sixt Miona",
+                "description": "Zahlungseingang: Alex Beispiel & Robin Beispiel",
                 "amount": 1000.0,
                 "type": "income",
                 "saldo": 10085.80,
@@ -158,7 +158,7 @@ class TestBekbNoticeParser:
                 "Gutschriftsanzeige per 02.12.2022 Datum:02.12.2022\n"
                 "Zahlungseingang (Rueckleitung)\n"
                 "Urspruenglicher Beguenstigter:\n"
-                "Miona Sixt\n"
+                "Robin Beispiel\n"
                 "Gutschrift\n"
                 "Valuta02.12.2022 CHF 1'025.00\n"
                 "Neuer Saldo\n"
@@ -168,6 +168,6 @@ class TestBekbNoticeParser:
 
         result = bekb.parse_bekb_notice(Path("returned_notice.pdf"))
 
-        assert result[0]["description"] == "Zahlungseingang: Miona Sixt"
+        assert result[0]["description"] == "Zahlungseingang: Robin Beispiel"
         assert result[0]["amount"] == 1025.0
         assert result[0]["type"] == "income"

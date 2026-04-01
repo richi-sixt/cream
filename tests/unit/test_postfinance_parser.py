@@ -40,19 +40,19 @@ class TestPostFinanceMetadata:
             "_read_first_page_lines",
             lambda _: [
                 "PostFinance AG",
-                "Sixt Ruechan",
+                "Alex Beispiel",
                 "Privatkonto",
                 "Kontoauszug 01.02.2026 - 29.02.2026 Datum: 01.03.2026",
-                "IBAN CH53 0900 0000 8718 7069 4 CHF",
+                "IBAN CH53 0900 0000 1234 5678 9 CHF",
             ],
         )
 
         metadata = postfinance.extract_account_metadata(
-            Path("REP_P_CH5309000000871870694_1108239329_0_2026020105141049.pdf")
+            Path("REP_P_CH5309000000123456789_1108239329_0_2026020105141049.pdf")
         )
 
-        assert metadata["iban"] == "CH5309000000871870694"
-        assert metadata["name"] == "PostFinance Privatkonto - Sixt Ruechan"
+        assert metadata["iban"] == "CH5309000000123456789"
+        assert metadata["name"] == "PostFinance Privatkonto - Alex Beispiel"
         assert metadata["type"] == "checking"
 
 
@@ -75,7 +75,7 @@ class TestPostFinanceParser:
             {"text": "2", "x0": 526.9, "top": 447.9},
             {"text": "874.28", "x0": 534.9, "top": 447.9},
             {"text": "ABSENDER:", "x0": 119.1, "top": 468.9},
-            {"text": "HELSANA", "x0": 119.1, "top": 479.4},
+            {"text": "NORDLICHT", "x0": 119.1, "top": 479.4},
             {"text": "05.04.24", "x0": 65.2, "top": 595.0},
             {"text": "LASTSCHRIFT", "x0": 119.1, "top": 594.9},
             {"text": "1", "x0": 396.6, "top": 595.0},
@@ -99,7 +99,7 @@ class TestPostFinanceParser:
         assert result[0]["amount"] == 311.25
         assert result[0]["saldo"] == 2874.28
         assert "ABSENDER:" in result[0]["description"]
-        assert "HELSANA" in result[0]["description"]
+        assert "NORDLICHT" in result[0]["description"]
         assert result[1]["type"] == "expense"
         assert result[1]["amount"] == 1000.0
         assert result[1]["saldo"] == 1874.28
@@ -210,7 +210,7 @@ class TestPostFinanceNormalization:
     def test_normalizes_legacy_merged_row(self, app, db, monkeypatch):
         from app.models import Account, Transaction
 
-        account = Account(name="PostFinance Privatkonto - Demo", iban="CH5309000000871870694", type="checking")
+        account = Account(name="PostFinance Privatkonto - Demo", iban="CH5309000000123456789", type="checking")
         db.session.add(account)
         db.session.flush()
         db.session.add(
@@ -221,19 +221,19 @@ class TestPostFinanceNormalization:
                 amount=0.0,
                 type="expense",
                 saldo=469.07,
-                pdf_source="REP_P_CH5309000000871870694_1108239329_0_2026010111592267.pdf",
+                pdf_source="REP_P_CH5309000000123456789_1108239329_0_2026010111592267.pdf",
                 import_hash="legacy-row",
             )
         )
         db.session.commit()
 
-        pdf_path = app.config["BEWEGUNGEN_DIR"] / "REP_P_CH5309000000871870694_1108239329_0_2026010111592267.pdf"
+        pdf_path = app.config["BEWEGUNGEN_DIR"] / "REP_P_CH5309000000123456789_1108239329_0_2026010111592267.pdf"
         pdf_path.write_bytes(b"%PDF-1.4\n")
 
         monkeypatch.setattr(
             postfinance,
             "extract_account_metadata",
-            lambda _: {"iban": "CH5309000000871870694", "name": account.name, "type": "checking"},
+            lambda _: {"iban": "CH5309000000123456789", "name": account.name, "type": "checking"},
         )
         monkeypatch.setattr(
             postfinance,

@@ -4,7 +4,8 @@ from datetime import date
 
 import pytest
 
-from app.importers.invoices import extract_slip_data
+from app.importers.invoices import apply_invoice_title_rule, extract_invoice_issuer, extract_slip_data
+from app.models import InvoiceTitleRule
 
 
 class TestExtractSlipData:
@@ -55,6 +56,16 @@ class TestExtractSlipData:
         result = extract_slip_data(text)
         assert result["amount"] == 1470.0
 
+    def test_payment_request_sentence_overrides_partial_line_items(self):
+        text = (
+            "Total zu Ihren Lasten 16.50\n"
+            "Gesamttotal CHF zu Ihren Lasten 21.35\n"
+            "Bitte bezahlen Sie den Betrag von CHF 21.35 bis 25.04.2026 per eBill. Vielen Dank."
+        )
+        result = extract_slip_data(text)
+        assert result["amount"] == 21.35
+        assert result["due_date"] == date(2026, 4, 25)
+
     # Due date extraction
 
     def test_faellig_am(self):
@@ -100,3 +111,61 @@ class TestExtractSlipData:
     def test_leerer_text(self):
         result = extract_slip_data("")
         assert result == {"amount": None, "due_date": None, "slip_label": None}
+
+
+class TestExtractInvoiceIssuer:
+    def test_prefers_company_line_over_generic_header(self):
+        lines = [
+            "Ihr persönliches Beratungsteam",
+            "Team Beispiel",
+            "kb8.bern@example.ch",
+            "Leistungsabrechnung",
+            "Helsana Versicherungen AG",
+            "Kundenservice, Postfach, 3048 Worblaufen, www.helsana.ch",
+        ]
+        assert extract_invoice_issuer(lines) == "Helsana Versicherungen AG"
+
+    def test_falls_back_to_first_useful_line(self):
+        lines = [
+            "Rechnung",
+            "Beispielpraxis Zentrum",
+            "Musterstrasse 4",
+        ]
+        assert extract_invoice_issuer(lines) == "Beispielpraxis Zentrum"
+
+    def test_prefers_tax_office_over_ocr_garbage_header(self):
+        lines = [
+            "A, ,o rSO",
+            "Steueramt des Kantons Solothurn tttttt K lOthr f n",
+            "Finanzen und Dienste",
+        ]
+        assert extract_invoice_issuer(lines) == "Steueramt des Kantons Solothurn tttttt K lOthr f n"
+
+
+class TestInvoiceTitleRules:
+    def test_apply_invoice_title_rule_uses_matching_raw_issuer(self, db):
+        db.session.add(InvoiceTitleRule(raw_issuer="Helsana Versicherungen AG", title="Helsana"))
+        db.session.commit()
+
+        slip = {
+            "filename": "invoice.pdf",
+            "page_index": 0,
+            "raw_issuer": "Helsana Versicherungen AG",
+            "amount": 21.35,
+        }
+
+        updated = apply_invoice_title_rule(slip)
+
+        assert updated["title"] == "Helsana"
+
+    def test_apply_invoice_title_rule_keeps_slip_without_match(self, db):
+        slip = {
+            "filename": "invoice.pdf",
+            "page_index": 0,
+            "raw_issuer": "Unknown Issuer",
+            "amount": 21.35,
+        }
+
+        updated = apply_invoice_title_rule(slip)
+
+        assert "title" not in updated

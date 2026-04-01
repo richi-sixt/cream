@@ -13,10 +13,21 @@ from app.main import bp
 from app.models import Account, Category, Invoice, Transaction
 
 
+def _category_path(cat: Category) -> str:
+    """Build a display path like `Energie/Gas` from the hierarchy."""
+    names: list[str] = []
+    cursor: Category | None = cat
+    while cursor is not None:
+        names.append(cursor.name)
+        cursor = cursor.parent
+    return "/".join(reversed(names))
+
+
 @bp.route("/")
 def dashboard():
     """Render the finance dashboard with optional transaction and invoice filters."""
     account_id_str = request.args.get("account_id", "").strip()
+    tx_category_id_str = request.args.get("tx_category_id", "").strip()
     tx_year = request.args.get("tx_year", "").strip()
     tx_month = request.args.get("tx_month", "").strip()
 
@@ -27,9 +38,24 @@ def dashboard():
         except ValueError:
             account_id_str = ""
 
+    selected_tx_category_id: int | None = None
+    if tx_category_id_str:
+        try:
+            selected_tx_category_id = int(tx_category_id_str)
+        except ValueError:
+            tx_category_id_str = ""
+
     inv_status = request.args.get("inv_status", "pending").strip()
+    inv_category_id_str = request.args.get("inv_category_id", "").strip()
     inv_year = request.args.get("inv_year", "").strip()
     inv_month = request.args.get("inv_month", "").strip()
+
+    selected_inv_category_id: int | None = None
+    if inv_category_id_str:
+        try:
+            selected_inv_category_id = int(inv_category_id_str)
+        except ValueError:
+            inv_category_id_str = ""
 
     accounts = Account.query.order_by(Account.name).all()
 
@@ -37,6 +63,8 @@ def dashboard():
 
     if selected_account_id:
         q = q.filter(Transaction.account_id == selected_account_id)
+    if selected_tx_category_id:
+        q = q.filter(Transaction.category_id == selected_tx_category_id)
     if tx_year:
         try:
             q = q.filter(extract("year", Transaction.date) == int(tx_year))
@@ -71,6 +99,8 @@ def dashboard():
 
     if inv_status in Invoice.STATUSES:
         inv_q = inv_q.filter(Invoice.status == inv_status)
+    if selected_inv_category_id:
+        inv_q = inv_q.filter(Invoice.category_id == selected_inv_category_id)
 
     if inv_year:
         try:
@@ -109,6 +139,11 @@ def dashboard():
 
     total_pending = sum(i.amount or 0.0 for i in invoices)
     categories = Category.query.order_by(Category.name).all()
+    category_options = [
+        {"id": c.id, "name": c.name, "path": _category_path(c)}
+        for c in categories
+    ]
+    category_options.sort(key=lambda c: c["path"].lower())
 
     sorted_months = sorted(months.items())
     chart_data = {
@@ -124,14 +159,17 @@ def dashboard():
         latest_saldo=latest_saldo,
         total_pending=total_pending,
         categories=categories,
+        category_options=category_options,
         today=date.today(),
         chart_data=chart_data,
         accounts=accounts,
         selected_account_id=selected_account_id,
+        selected_tx_category_id=selected_tx_category_id,
         tx_year=tx_year,
         tx_month=tx_month,
         available_tx_years=available_tx_years,
         inv_status=inv_status,
+        selected_inv_category_id=selected_inv_category_id,
         inv_year=inv_year,
         inv_month=inv_month,
         available_inv_years=available_inv_years,

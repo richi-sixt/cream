@@ -8,7 +8,7 @@ from typing import Optional
 from flask import current_app
 
 from app import db
-from app.models import Invoice
+from app.models import Invoice, InvoiceTitleRule
 from .base import parse_chf, make_hash
 
 # Amount patterns
@@ -37,6 +37,28 @@ _TRENNLINIE = re.compile(
     re.IGNORECASE,
 )
 
+_ISSUER_SKIP_PHRASES = (
+    "ihr persönliches beratungsteam",
+    "ihr persoenliches beratungsteam",
+    "leistungsabrechnung",
+    "detailabrechnung",
+    "erklärvideo",
+    "erklaervideo",
+    "einfach scannen",
+)
+_LEGAL_ENTITY_RE = re.compile(r"\b(AG|GmbH|SA|Sarl|SARL|Ltd\.?|Inc\.?)\b")
+_ISSUER_PREFERRED_RE = re.compile(
+    r"\b("
+    r"Steueramt|Versicherungen|Versicherung|Krankenkasse|Praxis|Apotheke|Gemeinde|Kanton|"
+    r"Stadt|Spital|Zentrum|Service|Bank|Finanzen|Dienste"
+    r")\b",
+    re.IGNORECASE,
+)
+_ISSUER_STRONG_PREFERRED_RE = re.compile(
+    r"\b(Steueramt|Versicherungen|Versicherung|Krankenkasse|Praxis|Apotheke|Spital)\b",
+    re.IGNORECASE,
+)
+
 
 def extract_slip_data(text: str) -> dict:
     """
@@ -47,17 +69,34 @@ def extract_slip_data(text: str) -> dict:
     """
     result: dict = {"amount": None, "due_date": None, "slip_label": None}
 
-    # Priority 1: canonical Swiss QR-bill pattern
-    qr_m = re.search(
-        r"(?:Währung|Wahrung|Currency)\s+(?:Betrag|Betmg|Amount)\s+"
-        r"(?:CHF|EUR)\s+" + _QR_AMOUNT_RE,
-        text, re.IGNORECASE,
+    payment_request_match = re.search(
+        r"Bitte\s+bezahlen\s+Sie\s+den\s+Betrag\s+von\s+CHF\s+"
+        + _QR_AMOUNT_RE
+        + r"\s+bis\s+(\d{1,2}\.\d{1,2}\.\d{2,4})",
+        text,
+        re.IGNORECASE,
     )
-    if qr_m:
-        result["amount"] = parse_chf(qr_m.group(1))
+    if payment_request_match:
+        result["amount"] = parse_chf(payment_request_match.group(1))
+        for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+            try:
+                result["due_date"] = datetime.strptime(payment_request_match.group(2), fmt).date()
+                break
+            except ValueError:
+                pass
+
+    # Priority 1: canonical Swiss QR-bill pattern
+    if result["amount"] is None:
+        qr_m = re.search(
+            r"(?:Währung|Wahrung|Currency)\s+(?:Betrag|Betmg|Amount)\s+"
+            r"(?:CHF|EUR)\s+" + _QR_AMOUNT_RE,
+            text, re.IGNORECASE,
+        )
+        if qr_m:
+            result["amount"] = parse_chf(qr_m.group(1))
 
     # Priority 2: fallback invoice-text patterns
-    if not result["amount"]:
+    if result["amount"] is None:
         for pat in _BETRAG_PATTERNS:
             for m in re.finditer(pat, text, re.IGNORECASE):
                 val = parse_chf(m.group(1))
@@ -68,17 +107,18 @@ def extract_slip_data(text: str) -> dict:
                 break
 
     # Due date
-    m = re.search(
-        r"(?:zahlbar bis|fällig(?:keitsdatum)?|Zahlbar bis)[:\s]+(\d{1,2}\.\d{1,2}\.\d{2,4})",
-        text, re.IGNORECASE,
-    )
-    if m:
-        for fmt in ("%d.%m.%Y", "%d.%m.%y"):
-            try:
-                result["due_date"] = datetime.strptime(m.group(1), fmt).date()
-                break
-            except ValueError:
-                pass
+    if result["due_date"] is None:
+        m = re.search(
+            r"(?:zahlbar bis|fällig(?:keitsdatum)?|Zahlbar bis)[:\s]+(\d{1,2}\.\d{1,2}\.\d{2,4})",
+            text, re.IGNORECASE,
+        )
+        if m:
+            for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+                try:
+                    result["due_date"] = datetime.strptime(m.group(1), fmt).date()
+                    break
+                except ValueError:
+                    pass
 
     # Slip label
     label_m = re.search(
@@ -93,6 +133,74 @@ def extract_slip_data(text: str) -> dict:
         result["slip_label"] = label_m.group(1).strip()
 
     return result
+
+
+def extract_invoice_issuer(lines: list[str]) -> Optional[str]:
+    """Extract the most likely company name from invoice text lines."""
+    candidates: list[str] = []
+    legal_entity_candidates: list[str] = []
+    strong_preferred_candidates: list[str] = []
+    preferred_candidates: list[str] = []
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        lowered = line.lower()
+        if len(line) <= 3 or len(line) >= 120:
+            continue
+        if any(phrase in lowered for phrase in _ISSUER_SKIP_PHRASES):
+            continue
+        if any(token in lowered for token in ["www.", "iban", "mwst", "seite", "tel", "fax", "@", ".ch"]):
+            continue
+        if re.match(r"^\d", line):
+            continue
+        if "rechnung nr" in lowered or "versicherten nr" in lowered:
+            continue
+        if sum(char.isalpha() for char in line) < 6:
+            continue
+        if line.count(",") >= 2 and " " not in line.replace(",", " ").strip():
+            continue
+
+        candidates.append(line)
+        if _LEGAL_ENTITY_RE.search(line):
+            legal_entity_candidates.append(line)
+        if _ISSUER_STRONG_PREFERRED_RE.search(line):
+            strong_preferred_candidates.append(line)
+        if _ISSUER_PREFERRED_RE.search(line):
+            preferred_candidates.append(line)
+
+    if legal_entity_candidates:
+        return legal_entity_candidates[0]
+    if strong_preferred_candidates:
+        return strong_preferred_candidates[0]
+    if preferred_candidates:
+        return preferred_candidates[0]
+    if candidates:
+        return candidates[0]
+    return None
+
+
+def normalize_invoice_issuer(raw_issuer: Optional[str]) -> Optional[str]:
+    """Normalize OCR-heavy issuer names into cleaner labels."""
+    if not raw_issuer:
+        return raw_issuer
+
+    cleaned = _normalize_whitespace(raw_issuer)
+    cleaned = cleaned.replace("Steuerarnt", "Steueramt").replace("steuerarnt", "Steueramt")
+
+    tax_office_match = re.search(
+        r"Steueramt\s+des\s+Kantons\s+Solothurn",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if tax_office_match:
+        return "Steueramt des Kantons Solothurn"
+
+    return cleaned
+
+
+def _normalize_whitespace(value: str) -> str:
+    """Collapse repeated whitespace in OCR text."""
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def parse_invoice_slips(pdf_path: Path) -> list[dict]:
@@ -112,16 +220,7 @@ def parse_invoice_slips(pdf_path: Path) -> list[dict]:
         first_lines = full_text.split("\n")
 
     # Issuer: first useful line from the document
-    raw_issuer: Optional[str] = None
-    for line in first_lines:
-        line = line.strip()
-        if (len(line) > 3
-                and not any(c.isdigit() for c in line[:3])
-                and len(line) < 60
-                and not any(kw in line.lower() for kw in
-                            ["www.", "iban", "mwst", "seite", "tel", "fax"])):
-            raw_issuer = line
-            break
+    raw_issuer = normalize_invoice_issuer(extract_invoice_issuer(first_lines))
 
     # Invoice date from the full document text
     invoice_date: Optional[date] = None
@@ -184,6 +283,23 @@ def parse_invoice_slips(pdf_path: Path) -> list[dict]:
     return slips
 
 
+def apply_invoice_title_rule(slip: dict) -> dict:
+    """Apply a remembered title rule to a parsed invoice slip."""
+    raw_issuer = slip.get("raw_issuer")
+    if not raw_issuer:
+        return slip
+
+    rule = InvoiceTitleRule.query.filter_by(raw_issuer=raw_issuer).first()
+    if rule is None:
+        return slip
+
+    updated = dict(slip)
+    updated["title"] = rule.title
+    if rule.category_id and not updated.get("category_id"):
+        updated["category_id"] = rule.category_id
+    return updated
+
+
 def _extract_source_year(pdf_path: Path) -> Optional[int]:
     """
     Extract a year from the folder path or filename.
@@ -219,6 +335,7 @@ def _import_from_dir(directory: Path, default_status: str) -> dict:
         try:
             slips = parse_invoice_slips(pdf)
             for slip in slips:
+                slip = apply_invoice_title_rule(slip)
                 h = make_hash(slip["filename"], slip["page_index"])
                 existing = Invoice.query.filter_by(import_hash=h).first()
                 if existing:
@@ -236,10 +353,12 @@ def _import_from_dir(directory: Path, default_status: str) -> dict:
                     filename     = slip["filename"],
                     page_index   = slip["page_index"],
                     slip_label   = slip.get("slip_label"),
+                    title        = slip.get("title"),
                     raw_issuer   = slip.get("raw_issuer"),
                     amount       = slip.get("amount"),
                     invoice_date = slip.get("invoice_date"),
                     due_date     = slip.get("due_date"),
+                    category_id  = slip.get("category_id"),
                     import_hash  = h,
                     status       = default_status,
                     source_year  = source_year,

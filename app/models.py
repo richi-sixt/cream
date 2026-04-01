@@ -48,6 +48,9 @@ class Category(db.Model):
     invoices: Mapped[list[Invoice]] = relationship(
         "Invoice", back_populates="category"
     )
+    title_rules: Mapped[list["InvoiceTitleRule"]] = relationship(
+        "InvoiceTitleRule", back_populates="category"
+    )
 
     def __repr__(self) -> str:
         return f"<Category {self.name}>"
@@ -156,6 +159,7 @@ class Transaction(db.Model):
             "type":            self.type,
             "saldo":           self.saldo,
             "category_id":     self.category_id,
+            "category_name":   self.category.name if self.category else None,
             "pdf_source":      self.pdf_source,
             "notes":           self.notes,
             "lines":           [l.to_dict() for l in self.lines],
@@ -260,6 +264,41 @@ class Invoice(db.Model):
             "status":         self.status,
             "source_year":    self.source_year,
             "category_id":    self.category_id,
+            "category_name":  self.category.name if self.category else None,
             "days_until_due": self.days_until_due,
             "notes":          self.notes,
+        }
+
+
+class InvoiceTitleRule(db.Model):
+    """Remembered invoice title rule keyed by normalized issuer."""
+
+    __tablename__ = "invoice_title_rules"
+
+    id         : Mapped[int]            = mapped_column(Integer, primary_key=True)
+    raw_issuer : Mapped[str]            = mapped_column(String(200), unique=True, nullable=False)
+    title      : Mapped[str]            = mapped_column(String(200), nullable=False)
+    category_id: Mapped[Optional[int]]  = mapped_column(
+        Integer, ForeignKey("categories.id"), nullable=True
+    )
+    created_at : Mapped[datetime]       = mapped_column(
+        db.DateTime, default=utc_now
+    )
+    updated_at : Mapped[datetime]       = mapped_column(
+        db.DateTime, default=utc_now, onupdate=utc_now
+    )
+
+    category: Mapped[Optional[Category]] = relationship(
+        "Category", back_populates="title_rules"
+    )
+
+    def __repr__(self) -> str:
+        return f"<InvoiceTitleRule {self.raw_issuer} -> {self.title}>"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id":          self.id,
+            "raw_issuer":  self.raw_issuer,
+            "title":       self.title,
+            "category_id": self.category_id,
         }

@@ -53,6 +53,18 @@ def _create_transaction(db, **kwargs):
     return tx
 
 
+def _create_category(db, **kwargs):
+    """Create a test category."""
+    from app.models import Category
+
+    defaults = {"name": "Haushalt"}
+    defaults.update(kwargs)
+    cat = Category(**defaults)
+    db.session.add(cat)
+    db.session.commit()
+    return cat
+
+
 # ── Dashboard ────────────────────────────────────────────────────────────────
 
 class TestDashboard:
@@ -189,6 +201,194 @@ class TestInvoiceApi:
         )
         assert r.status_code == 404
 
+    def test_delete_invoice(self, client, db):
+        from app.models import Invoice
+        inv = _create_invoice(db, import_hash="h_delete", filename="delete-me.pdf")
+        r = client.delete(f"/api/invoices/{inv.id}")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["ok"] is True
+        assert data["deleted_id"] == inv.id
+        assert db.session.get(Invoice, inv.id) is None
+
+    def test_delete_invoice_not_found(self, client, db):
+        r = client.delete("/api/invoices/99999")
+        assert r.status_code == 404
+
+    def test_remember_invoice_title_creates_rule(self, client, db):
+        from app.models import InvoiceTitleRule
+
+        cat = _create_category(db, name="Versicherung")
+        inv = _create_invoice(
+            db,
+            import_hash="h_rule_create",
+            raw_issuer="Helsana Versicherungen AG",
+            title="Helsana April",
+            category_id=cat.id,
+        )
+
+        r = client.post(
+            f"/api/invoices/{inv.id}/remember-title",
+            data=json.dumps({"title": "Helsana"}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["created"] is True
+        assert data["rule"]["raw_issuer"] == "Helsana Versicherungen AG"
+        assert data["rule"]["title"] == "Helsana"
+        assert data["rule"]["category_id"] == cat.id
+
+        rule = InvoiceTitleRule.query.filter_by(raw_issuer="Helsana Versicherungen AG").first()
+        assert rule is not None
+        assert rule.title == "Helsana"
+        assert rule.category_id == cat.id
+
+    def test_remember_invoice_title_updates_existing_rule(self, client, db):
+        from app.models import InvoiceTitleRule
+
+        inv = _create_invoice(
+            db,
+            import_hash="h_rule_update",
+            raw_issuer="Steueramt des Kantons Solothurn",
+            title="Steuern",
+        )
+        db.session.add(
+            InvoiceTitleRule(
+                raw_issuer="Steueramt des Kantons Solothurn",
+                title="Alt",
+            )
+        )
+        db.session.commit()
+
+        r = client.post(
+            f"/api/invoices/{inv.id}/remember-title",
+            data=json.dumps({"title": "Steueramt Solothurn"}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["created"] is False
+        assert data["rule"]["title"] == "Steueramt Solothurn"
+
+    def test_remember_invoice_title_requires_raw_issuer(self, client, db):
+        inv = _create_invoice(
+            db,
+            import_hash="h_rule_missing_issuer",
+            raw_issuer=None,
+            title="Titel",
+        )
+
+        r = client.post(
+            f"/api/invoices/{inv.id}/remember-title",
+            data=json.dumps({"title": "Titel"}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 400
+
+    def test_patch_invoice_category(self, client, db):
+        cat = _create_category(db, name="Steuern")
+        inv = _create_invoice(db, import_hash="h_inv_cat")
+
+        r = client.patch(
+            f"/api/invoices/{inv.id}",
+            data=json.dumps({"category_id": cat.id}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["category_id"] == cat.id
+        assert data["category_name"] == "Steuern"
+
+    def test_list_categories_includes_usage_counts(self, client, db):
+        cat = _create_category(db, name="Haushalt")
+        _create_invoice(db, import_hash="cat_usage_inv", category_id=cat.id)
+        _create_transaction(db, import_hash="cat_usage_tx", category_id=cat.id)
+
+        r = client.get("/api/categories")
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        item = next(c for c in data if c["id"] == cat.id)
+        assert item["tx_count"] == 1
+        assert item["invoice_count"] == 1
+        assert item["usage_total"] == 2
+        assert item["deletable"] is False
+
+    def test_patch_category_name(self, client, db):
+        cat = _create_category(db, name="Alt")
+
+        r = client.patch(
+            f"/api/categories/{cat.id}",
+            data=json.dumps({"name": "Neu"}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["name"] == "Neu"
+
+    def test_patch_category_parent(self, client, db):
+        parent = _create_category(db, name="Energie")
+        child = _create_category(db, name="Gas")
+
+        r = client.patch(
+            f"/api/categories/{child.id}",
+            data=json.dumps({"parent_id": parent.id}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["parent_id"] == parent.id
+        assert data["path"] == "Energie/Gas"
+
+    def test_patch_category_parent_cycle_rejected(self, client, db):
+        parent = _create_category(db, name="Energie")
+        child = _create_category(db, name="Gas", parent_id=parent.id)
+
+        r = client.patch(
+            f"/api/categories/{parent.id}",
+            data=json.dumps({"parent_id": child.id}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 400
+
+    def test_patch_category_parent_self_rejected(self, client, db):
+        cat = _create_category(db, name="Strom")
+
+        r = client.patch(
+            f"/api/categories/{cat.id}",
+            data=json.dumps({"parent_id": cat.id}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 400
+
+    def test_delete_unused_category(self, client, db):
+        from app.models import Category
+
+        cat = _create_category(db, name="Loeschbar")
+        r = client.delete(f"/api/categories/{cat.id}")
+
+        assert r.status_code == 200
+        payload = json.loads(r.data)
+        assert payload["ok"] is True
+        assert db.session.get(Category, cat.id) is None
+
+    def test_delete_used_category_rejected(self, client, db):
+        cat = _create_category(db, name="InUse")
+        _create_invoice(db, import_hash="cat_inuse_inv", category_id=cat.id)
+
+        r = client.delete(f"/api/categories/{cat.id}")
+
+        assert r.status_code == 400
+
     def test_titel_korrektur_bleibt_bei_reimport(self, client, db):
         """
         import_hash schützt manuelle Korrekturen beim Re-Import.
@@ -303,6 +503,32 @@ class TestTransactionApi:
         assert r.status_code == 200
         assert json.loads(r.data)["display_title"] == "Lohn Januar"
 
+    def test_patch_transaction_category(self, client, db):
+        cat = _create_category(db, name="Essen")
+        tx = _create_transaction(db, import_hash="t_cat")
+        r = client.patch(
+            f"/api/transactions/{tx.id}",
+            data=json.dumps({"category_id": cat.id}),
+            content_type="application/json",
+        )
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["category_id"] == cat.id
+        assert data["category_name"] == "Essen"
+
+    def test_list_transactions_filter_category(self, client, db):
+        cat_a = _create_category(db, name="Essen")
+        cat_b = _create_category(db, name="Transport")
+        _create_transaction(db, import_hash="t_cat_a", category_id=cat_a.id)
+        _create_transaction(db, import_hash="t_cat_b", category_id=cat_b.id)
+
+        r = client.get(f"/api/transactions?category_id={cat_b.id}")
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert len(data) == 1
+        assert data[0]["category_id"] == cat_b.id
+
 
 # ── Dashboard Filter ───────────────────────────────────────────────────────────
 
@@ -347,6 +573,17 @@ class TestDashboardFilter:
         """Ungültige Filter-Werte werden ignoriert, kein 500."""
         r = client.get("/?account_id=xyz&tx_year=kein&tx_month=kein")
         assert r.status_code == 200
+
+    def test_dashboard_filter_transaction_category(self, client, db):
+        cat = _create_category(db, name="Lebensmittel")
+        _create_transaction(db, import_hash="df_cat_match", raw_description="Migros", category_id=cat.id)
+        _create_transaction(db, import_hash="df_cat_other", raw_description="SBB")
+
+        r = client.get(f"/?tx_category_id={cat.id}")
+
+        assert r.status_code == 200
+        assert b"Migros" in r.data
+        assert b"SBB" not in r.data
 
 
 # ── Rechnungen Filter ──────────────────────────────────────────────────────────
@@ -430,6 +667,30 @@ class TestInvoiceFilter:
         data = json.loads(r.data)
         assert len(data) == 2  # beide im 2026, kein Monatsfilter
 
+    def test_api_filter_invoice_category(self, client, db):
+        cat_a = _create_category(db, name="Steuern")
+        cat_b = _create_category(db, name="Versicherung")
+        _create_invoice(db, import_hash="f_cat_a", category_id=cat_a.id)
+        _create_invoice(db, import_hash="f_cat_b", category_id=cat_b.id)
+
+        r = client.get(f"/api/invoices?category_id={cat_b.id}")
+
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert len(data) == 1
+        assert data[0]["category_id"] == cat_b.id
+
+    def test_dashboard_invoice_filter_category(self, client, db):
+        cat = _create_category(db, name="Versicherung")
+        _create_invoice(db, import_hash="df_inv_cat_match", filename="versicherung.pdf", category_id=cat.id)
+        _create_invoice(db, import_hash="df_inv_cat_other", filename="steuer.pdf")
+
+        r = client.get(f"/?inv_status=pending&inv_category_id={cat.id}")
+
+        assert r.status_code == 200
+        assert b"versicherung.pdf" in r.data
+        assert b"steuer.pdf" not in r.data
+
 
 # ── TransactionLine (Phase 5) ─────────────────────────────────────────────────
 
@@ -490,8 +751,8 @@ class TestTransactionLine:
             raw_description="Ihr E-Banking-Auftrag",
             amount=2052.80,
             lines_data=[
-                {"recipient": "Mobiliar", "amount": 561.70, "iban": "CH5600791234567890123"},
-                {"recipient": "Helsana",  "amount": 1491.10, "iban": "CH5600791234567890124"},
+                {"recipient": "Alpenkasse", "amount": 561.70, "iban": "CH5600791234567890123"},
+                {"recipient": "Nordlicht",  "amount": 1491.10, "iban": "CH5600791234567890124"},
             ],
         )
         r = client.get("/api/transactions")
@@ -499,8 +760,8 @@ class TestTransactionLine:
         assert len(data) == 1
         lines = data[0]["lines"]
         assert len(lines) == 2
-        assert lines[0]["recipient"] == "Mobiliar"
-        assert lines[1]["recipient"] == "Helsana"
+        assert lines[0]["recipient"] == "Alpenkasse"
+        assert lines[1]["recipient"] == "Nordlicht"
 
     def test_lines_reihenfolge(self, client, db):
         """Detailpositionen werden nach position-Feld sortiert zurückgegeben."""
@@ -562,12 +823,12 @@ class TestTransactionLine:
             raw_description="Ihr E-Banking-Auftrag",
             amount=500.0,
             lines_data=[
-                {"recipient": "Mobiliar", "amount": 250.0},
-                {"recipient": "Helsana",  "amount": 250.0},
+                {"recipient": "Alpenkasse", "amount": 250.0},
+                {"recipient": "Nordlicht",  "amount": 250.0},
             ],
         )
         r = client.get("/")
         assert r.status_code == 200
         # Toggle-Button und Empfänger-Namen im HTML
         assert b"Positionen" in r.data
-        assert b"Mobiliar" in r.data
+        assert b"Alpenkasse" in r.data

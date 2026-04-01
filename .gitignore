@@ -9,6 +9,7 @@ reports/
 data/
 *.db
 *.sqlite
+migrations/
 
 # Umgebungsvariablen (Secrets)
 .env
