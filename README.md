@@ -1,8 +1,20 @@
 # C.R.E.A.M.
 
-A personal Flask bookkeeping app (with German UI labels) for Swiss private finances.
+> **C**ash **R**ules **E**verything **A**round **M**e — a personal
+> finance management app for Swiss bank accounts and invoices,
+> built with Flask.
 
-Import bank statements and invoice PDFs, review and correct entries in the dashboard, and keep your local accounting data consistent across imports.
+C.R.E.A.M. is a personal bookkeeping application designed
+for Swiss residents who receive bank statements and invoices
+as PDF files. Instead of manually typing every transaction
+into a spreadsheet, you drop your PDF statements into
+designated folders and the app parses them automatically —
+extracting dates, amounts, recipients, and even QR-bill
+payment slips. You review and correct entries through a
+dark-mode dashboard running locally in your browser.
+
+The name is a playful nod to the Wu-Tang Clan classic,
+because — well — cash rules everything around us.
 
 ---
 
@@ -24,7 +36,7 @@ Import bank statements and invoice PDFs, review and correct entries in the dashb
 
 ### Bank imports
 
-- Dedicated importers for BEKB and PostFinance
+- Dedicated importers for BEKB, PostFinance and Revolut
 - Recursive document discovery in `03-Bewegungen/` (bank subfolders supported)
 - Multi-account support via IBAN-aware matching
 - Duplicate protection with stable import hashes
@@ -117,6 +129,6 @@ pytest -q
 
 ## Documentation
 
-For full architecture and workflow details, see:
+For full documentation and workflow details, see:
 
-- [ ] create tutorial-docs
+- [PROJECT TUTORIAL](./PROJECT_TUTORIAL.md)
