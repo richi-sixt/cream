@@ -997,7 +997,3 @@ recommended order:
     can see what is expected.
 
 ---
-
-*This tutorial was generated from the C.R.E.A.M. source
-code. For questions about specific files or features, ask
-for a deeper dive into any section.*
