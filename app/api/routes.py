@@ -70,7 +70,7 @@ def update_invoice(inv_id: int):
     inv = db.get_or_404(Invoice, inv_id)
     data: dict = request.get_json(silent=True) or {}
 
-    allowed = ("title", "amount", "status", "due_date", "paid_date", "category_id", "notes")
+    allowed = ("title", "amount", "status", "due_date", "paid_date", "source_year", "category_id", "notes")
     for field in allowed:
         if field not in data:
             continue
@@ -96,6 +96,17 @@ def update_invoice(inv_id: int):
 
         if field == "status" and val not in Invoice.STATUSES:
             abort(400, f"Invalid status: {val}")
+
+        if field == "source_year":
+            if val in ("", None):
+                val = None
+            else:
+                try:
+                    val = int(val)
+                except (TypeError, ValueError):
+                    abort(400, f"Invalid source_year: {val}")
+                if val < 2000 or val > 2100:
+                    abort(400, f"Invalid source_year: {val}")
 
         setattr(inv, field, val)
 

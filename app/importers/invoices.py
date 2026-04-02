@@ -339,10 +339,11 @@ def _import_from_dir(directory: Path, default_status: str) -> dict:
                 h = make_hash(slip["filename"], slip["page_index"])
                 existing = Invoice.query.filter_by(import_hash=h).first()
                 if existing:
-                    # The file moved from pending to paid: update the existing invoice.
-                    if existing.status != default_status:
-                        existing.status = default_status
-                        if source_year:
+                    # Only promote pending -> paid automatically.
+                    # Never downgrade manual paid edits when a file still exists in pending.
+                    if existing.status == "pending" and default_status == "paid":
+                        existing.status = "paid"
+                        if source_year and existing.source_year is None:
                             existing.source_year = source_year
                         stats["imported"] += 1
                     else:

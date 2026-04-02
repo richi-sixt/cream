@@ -1,0 +1,122 @@
+  :root {
+    --bg:#0f1117; --surface:#1a1d27; --surface2:#22263a; --border:#2e3352;
+    --text:#e8eaf6; --muted:#8b91b8; --green:#4caf87; --red:#e05c6a;
+    --yellow:#f0a500; --orange:#e07840; --blue:#5b8af0; --purple:#9c6ef0;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px}
+
+  /* Header */
+  header{background:linear-gradient(135deg,#1a1d27,#22263a);border-bottom:1px solid var(--border);padding:18px 32px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+  header h1{font-size:20px;font-weight:700}
+  header .meta{color:var(--muted);font-size:12px;margin-top:2px}
+  .header-actions{display:flex;gap:8px;align-items:center}
+  .btn{padding:8px 16px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:opacity .2s}
+  .btn:hover{opacity:.85} .btn:disabled{opacity:.5;cursor:default}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-sm{padding:5px 12px;font-size:12px}
+
+  /* KPI-Bar */
+  .kpi-bar{display:flex;gap:12px;padding:18px 32px;flex-wrap:wrap}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;flex:1;min-width:170px}
+  .kpi label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.8px}
+  .kpi .val{font-size:20px;font-weight:700;margin-top:4px}
+  .kpi.blue .val{color:var(--blue)} .kpi.green .val{color:var(--green)}
+  .kpi.red .val{color:var(--red)}   .kpi.purple .val{color:var(--purple)}
+
+  /* Tabs */
+  .tabs{display:flex;gap:4px;padding:0 32px;border-bottom:1px solid var(--border)}
+  .tab-btn{padding:11px 22px;background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--blue);font-weight:600}
+  .tab-content{display:none;padding:22px 32px}
+  .tab-content.active{display:block}
+
+  /* Chart */
+  #chart-container{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:18px}
+
+  /* Monats-Akkordeon */
+  .monat-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+  .monat-header{width:100%;background:none;border:none;color:var(--text);padding:12px 16px;display:flex;align-items:center;gap:14px;cursor:pointer;font-size:14px;text-align:left}
+  .monat-header:hover{background:var(--surface2)}
+  .monat-name{font-weight:600;min-width:120px}
+  .monat-stats{display:flex;gap:14px;flex:1}
+  .monat-stats .ein{color:var(--green)} .monat-stats .aus{color:var(--red)}
+  .monat-stats .netto{font-weight:600}
+  .netto.pos{color:var(--green)} .netto.neg{color:var(--red)}
+  .chevron{margin-left:auto;transition:transform .2s}
+  .monat-header.open .chevron{transform:rotate(180deg)}
+  .monat-body{display:none}
+
+  /* Buchungstabelle */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:var(--surface2);padding:8px 12px;text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border)}
+  td{padding:7px 12px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(255,255,255,.02)}
+  .td-desc{color:var(--muted);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .td-betrag{text-align:right;white-space:nowrap;font-weight:500}
+  .td-saldo{text-align:right;color:var(--muted);font-size:12px}
+  .td-edit{text-align:center;width:40px}
+  .edit-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px}
+  .edit-btn:hover{color:var(--text);border-color:var(--blue)}
+
+  /* Rechnungskarten */
+  .rechnung-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+  .rechnung-header{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .rechnung-title{font-size:15px;font-weight:600;margin-bottom:3px}
+  .rechnung-meta{color:var(--muted);font-size:12px;display:flex;gap:14px;flex-wrap:wrap}
+  .rechnung-betrag{font-size:20px;font-weight:700;color:var(--red);white-space:nowrap}
+  .rechnung-body{display:flex}
+  .rechnung-info{padding:14px 18px;flex:1;display:flex;flex-direction:column;gap:10px}
+  .info-row{display:flex;gap:10px;align-items:center}
+  .info-label{color:var(--muted);font-size:12px;min-width:75px}
+
+  /* PDF-Button */
+  .btn-pdf{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;transition:border-color .2s,background .2s}
+  .btn-pdf:hover{border-color:var(--blue);background:#1c2035}
+
+  /* Badges */
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge-red{background:rgba(224,92,106,.2);color:var(--red)}
+  .badge-orange{background:rgba(224,120,64,.2);color:var(--orange)}
+  .badge-yellow{background:rgba(240,165,0,.2);color:var(--yellow)}
+  .badge-green{background:rgba(76,175,135,.2);color:var(--green)}
+  .badge-gray{background:rgba(139,145,184,.2);color:var(--muted)}
+  .badge-blue{background:rgba(91,138,240,.2);color:var(--blue)}
+
+  /* Status-Select */
+  .status-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer}
+
+  /* Toast-Meldung */
+  #toast{position:fixed;bottom:24px;right:24px;background:#22263a;border:1px solid var(--border);color:var(--text);padding:12px 20px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:999}
+  #toast.show{opacity:1}
+
+  .empty{color:var(--muted);padding:40px;text-align:center;font-size:15px}
+
+  /* E-Banking Detailpositionen */
+  .detail-toggle{background:none;border:1px solid var(--border);color:var(--blue);padding:2px 7px;border-radius:5px;cursor:pointer;font-size:11px;white-space:nowrap}
+  .detail-toggle:hover{background:rgba(91,138,240,.1)}
+  .tx-detail-row td{padding:0}
+  .lines-table{width:100%;border-collapse:collapse;background:rgba(91,138,240,.05)}
+  .lines-table td{padding:5px 12px;border-bottom:1px solid var(--border);font-size:12px}
+  .lines-table tr:last-child td{border-bottom:none}
+  .lines-table .lt-amount{text-align:right;font-weight:600;color:var(--red);white-space:nowrap}
+  .lines-table .lt-iban{color:var(--muted);font-size:11px;font-family:monospace}
+
+  /* Filter-Leiste */
+  .filter-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  .filter-bar select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:8px;font-size:13px;cursor:pointer;min-width:160px}
+  .filter-bar select:hover{border-color:var(--blue)}
+  .filter-bar select:focus{outline:none;border-color:var(--blue)}
+  .filter-reset{background:none;border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none;white-space:nowrap}
+  .filter-reset:hover{border-color:var(--red);color:var(--red)}
+  .filter-label{color:var(--muted);font-size:12px;white-space:nowrap}
+  .category-chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(91,138,240,.12);color:var(--blue);border:1px solid rgba(91,138,240,.25)}
+  .category-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .category-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;min-width:170px}
+  .category-select:hover{border-color:var(--blue)}
+  .kategorie-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .kategorie-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .kategorie-input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:8px;font-size:13px;min-width:220px}
+  .kategorie-input:focus{outline:none;border-color:var(--blue)}

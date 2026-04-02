@@ -11,6 +11,7 @@ and stores transactions per IBAN instead of assuming one hard-coded account.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -387,7 +388,7 @@ def parse_bekb_notice(pdf_path: Path) -> list[dict]:
     if not value_match:
         return []
 
-    value_date = date_from_ddmmyy(value_match.group(1)[0:8])
+    value_date = _parse_notice_value_date(value_match.group(1))
     amount = parse_chf(value_match.group(2))
     if value_date is None or amount is None:
         return []
@@ -420,6 +421,19 @@ def parse_bekb_notice(pdf_path: Path) -> list[dict]:
             "lines": [],
         }
     ]
+
+
+def _parse_notice_value_date(raw_date: str):
+    """Parse BEKB notice value dates in `dd.mm.yyyy` and `dd.mm.yy` formats."""
+    raw = raw_date.strip()
+    for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            pass
+
+    # Backwards-compatible fallback for older OCR variants.
+    return date_from_ddmmyy(raw[:8])
 
 
 def parse_bekb_document(pdf_path: Path) -> list[dict]:
@@ -571,6 +585,104 @@ def import_bank_documents() -> dict:
     return stats
 
 
+def repair_bekb_notice_dates() -> dict:
+    """Repair already imported BEKB notice rows with wrong parsed years."""
+    movements_dir: Path = current_app.config["BEWEGUNGEN_DIR"]
+    stats = {"updated": 0, "unchanged": 0, "missing": 0, "errors": 0}
+
+    if not movements_dir.exists():
+        current_app.logger.warning("Movements directory not found: %s", movements_dir)
+        return stats
+
+    for pdf in sorted(movements_dir.rglob("*.pdf")):
+        if "Gutschrifts_Belastungsanzeige" not in pdf.name:
+            continue
+
+        try:
+            parsed = parse_bekb_notice(pdf)
+            if not parsed:
+                stats["missing"] += 1
+                continue
+
+            tx = Transaction.query.filter_by(pdf_source=pdf.name).first()
+            if tx is None:
+                stats["missing"] += 1
+                continue
+
+            raw = parsed[0]
+            account_iban = tx.account.iban if tx.account else None
+            if not account_iban:
+                account_iban = extract_account_metadata(pdf).get("iban")
+            if not account_iban:
+                stats["errors"] += 1
+                continue
+
+            new_hash, legacy_hash = _build_transaction_hashes(raw, account_iban)
+
+            if (
+                tx.date == raw["date"]
+                and tx.amount == raw["amount"]
+                and tx.type == raw["type"]
+                and (tx.saldo or None) == raw.get("saldo")
+                and tx.raw_description == raw["description"]
+                and tx.import_hash in (new_hash, legacy_hash)
+            ):
+                stats["unchanged"] += 1
+                continue
+
+            collision = (
+                Transaction.query
+                .filter(
+                    Transaction.id != tx.id,
+                    Transaction.import_hash.in_([new_hash, legacy_hash]),
+                )
+                .first()
+            )
+            if collision:
+                current_app.logger.warning(
+                    "Skipped hash-collision repair for %s (tx_id=%s, collides with tx_id=%s).",
+                    pdf.name,
+                    tx.id,
+                    collision.id,
+                )
+                stats["errors"] += 1
+                continue
+
+            tx.date = raw["date"]
+            tx.raw_description = raw["description"]
+            tx.amount = raw["amount"]
+            tx.type = raw["type"]
+            tx.saldo = raw.get("saldo")
+            tx.import_hash = new_hash
+            stats["updated"] += 1
+        except Exception as exc:  # pragma: no cover - defensive logging path
+            current_app.logger.error("Failed to repair %s: %s", pdf.name, exc)
+            stats["errors"] += 1
+
+    db.session.commit()
+    return stats
+
+
+def sync_account_name_overrides() -> dict:
+    """Apply configured `ACCOUNT_NAME_OVERRIDES` to existing account rows."""
+    overrides: dict = current_app.config.get("ACCOUNT_NAME_OVERRIDES", {}) or {}
+    stats = {"updated": 0, "unchanged": 0, "missing": 0}
+
+    for iban, target_name in overrides.items():
+        account = Account.query.filter_by(iban=iban).first()
+        if account is None:
+            stats["missing"] += 1
+            continue
+        if account.name == target_name:
+            stats["unchanged"] += 1
+            continue
+        account.name = target_name
+        stats["updated"] += 1
+
+    db.session.commit()
+    return stats
+
+
 # Backwards-compatible aliases while the rest of the codebase transitions to English names.
 import_kontoauszuege = import_bank_documents
 
@@ -581,6 +693,8 @@ __all__ = [
     "parse_bekb_document",
     "parse_bekb_notice",
     "parse_bekb_pdf",
+    "repair_bekb_notice_dates",
+    "sync_account_name_overrides",
     "reparse_transaction_lines",
     "_parse_single_block",
     "_parse_sub_entries",

@@ -109,6 +109,31 @@ def create_app(config_name: str = "default") -> Flask:
             f"{stats['errors']} errors."
         )
 
+    @app.cli.command("repair-bekb-notice-dates")
+    def repair_bekb_notice_dates_cmd():
+        """Repair BEKB notice rows with incorrectly parsed years."""
+        from app.importers.bekb import repair_bekb_notice_dates
+
+        stats = repair_bekb_notice_dates()
+        click.echo(
+            f"Done: {stats['updated']} updated, "
+            f"{stats['unchanged']} unchanged, "
+            f"{stats['missing']} missing, "
+            f"{stats['errors']} errors."
+        )
+
+    @app.cli.command("sync-account-name-overrides")
+    def sync_account_name_overrides_cmd():
+        """Apply `ACCOUNT_NAME_OVERRIDES` to existing DB accounts."""
+        from app.importers.bekb import sync_account_name_overrides
+
+        stats = sync_account_name_overrides()
+        click.echo(
+            f"Done: {stats['updated']} updated, "
+            f"{stats['unchanged']} unchanged, "
+            f"{stats['missing']} missing."
+        )
+
     @app.cli.command("preview-postfinance-marked-repairs")
     @click.option(
         "--csv-path",

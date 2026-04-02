@@ -5,12 +5,14 @@ from collections.abc import Callable
 from .bekb import import_bank_documents, import_kontoauszuege
 from .invoices import import_invoices, import_rechnungen
 from .postfinance import import_postfinance_documents
+from .revolut import import_revolut_documents
 
 BankImporter = Callable[[], dict]
 
 BANK_IMPORTERS: dict[str, BankImporter] = {
     "bekb": import_bank_documents,
     "postfinance": import_postfinance_documents,
+    "revolut": import_revolut_documents,
 }
 
 
@@ -33,6 +35,7 @@ __all__ = [
     "import_bank_documents",
     "import_invoices",
     "import_postfinance_documents",
+    "import_revolut_documents",
     "import_kontoauszuege",
     "import_rechnungen",
 ]
