@@ -12,25 +12,25 @@ class TestExtractSlipData:
 
     # Amount extraction via Swiss QR standard
 
-    def test_qr_betrag_mit_apostroph(self):
+    def test_qr_amount_with_apostrophe(self):
         """Standard case with apostrophe thousands separators."""
         text = "Währung Betrag\nCHF 1'470.00\nOrdentliche Steuer Bund 2025"
         result = extract_slip_data(text)
         assert result["amount"] == 1470.0
 
-    def test_qr_betrag_mit_leerzeichen(self):
+    def test_qr_amount_with_space(self):
         """QR bills may use spaces as thousands separators."""
         text = "Währung Betrag\nCHF 2 522.75\n1. Rate zahlbar bis: 31.05.2026"
         result = extract_slip_data(text)
         assert result["amount"] == 2522.75
 
-    def test_qr_betrag_kleinbuchstaben_chf(self):
+    def test_qr_amount_with_lowercase_chf(self):
         """OCR may produce a mixed-case currency code."""
         text = "Währung Betrag\ncHF 1 470.00"
         result = extract_slip_data(text)
         assert result["amount"] == 1470.0
 
-    def test_qr_betrag_betmg_ocr_artefakt(self):
+    def test_qr_amount_with_betmg_ocr_artifact(self):
         """OCR may turn `Betrag` into `Betmg`."""
         text = "Währung Betmg\nCHF 1 470.00"
         result = extract_slip_data(text)
@@ -38,7 +38,7 @@ class TestExtractSlipData:
 
     # Regression tests for known parsing bugs
 
-    def test_gesamtbetrag_zahlbar_bis_kein_datum_als_betrag(self):
+    def test_total_payable_by_ignores_date_as_amount(self):
         """
         Regression: a due date must not be mistaken for an amount.
         """
@@ -50,7 +50,7 @@ class TestExtractSlipData:
         assert result["amount"] == 1470.0
         assert result["amount"] != pytest.approx(3103.20)
 
-    def test_gesamtbetrag_chf_wird_erkannt(self):
+    def test_total_amount_chf_is_detected(self):
         """`Gesamtbetrag CHF ...` is a legitimate amount pattern."""
         text = "Gesamtbetrag CHF 1'470.00"
         result = extract_slip_data(text)
@@ -68,17 +68,17 @@ class TestExtractSlipData:
 
     # Due date extraction
 
-    def test_faellig_am(self):
+    def test_due_on_date(self):
         text = "Zahlbar bis 31.03.2026\nCHF 1'470.00"
         result = extract_slip_data(text)
         assert result["due_date"] == date(2026, 3, 31)
 
-    def test_faellig_rate(self):
+    def test_due_installment(self):
         text = "1. Rate zahlbar bis: 31.05.2026\nCHF 2 522.75"
         result = extract_slip_data(text)
         assert result["due_date"] == date(2026, 5, 31)
 
-    def test_kein_datum_gibt_none(self):
+    def test_no_date_returns_none(self):
         text = "Währung Betrag\nCHF 100.00"
         result = extract_slip_data(text)
         assert result["due_date"] is None
@@ -95,20 +95,20 @@ class TestExtractSlipData:
         result = extract_slip_data(text)
         assert result["slip_label"] == "3. Rate"
 
-    def test_ordentliche_steuer_bund(self):
+    def test_federal_direct_tax_label(self):
         text = "Ordentliche Steuer Bund 2025\nGesamtbetrag zahlbar bis: 31.03.2026"
         result = extract_slip_data(text)
         assert result["slip_label"] is not None
         assert "Bund" in result["slip_label"]
 
-    def test_kein_label_gibt_none(self):
+    def test_no_label_returns_none(self):
         text = "Währung Betrag\nCHF 500.00\nZahlbar bis 30.06.2026"
         result = extract_slip_data(text)
         assert result["slip_label"] is None
 
     # Empty text
 
-    def test_leerer_text(self):
+    def test_empty_text(self):
         result = extract_slip_data("")
         assert result == {"amount": None, "due_date": None, "slip_label": None}
 
@@ -118,14 +118,14 @@ class TestExtractInvoiceIssuer:
         lines = [
             "Ihr persönliches Beratungsteam",
             "Team Beispiel",
-            "kb8.bern@example.ch",
+            "support@example.test",
             "Leistungsabrechnung",
             "Helsana Versicherungen AG",
-            "Kundenservice, Postfach, 3048 Worblaufen, www.helsana.ch",
+            "Service center, PO Box 123, 8000 Sample City, www.example-health.test",
         ]
         assert extract_invoice_issuer(lines) == "Helsana Versicherungen AG"
 
-    def test_falls_back_to_first_useful_line(self):
+    def test_falls_back_to_first_meaningful_line(self):
         lines = [
             "Rechnung",
             "Beispielpraxis Zentrum",

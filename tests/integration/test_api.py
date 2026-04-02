@@ -1,7 +1,7 @@
 """
-tests/integration/test_api.py — Integrationstests für alle API-Endpunkte.
+tests/integration/test_api.py — Integration tests for all API endpoints.
 
-Testet vollständige HTTP-Request/Response-Zyklen gegen eine in-memory DB.
+Covers full HTTP request/response cycles against an in-memory DB.
 """
 
 import json
@@ -10,10 +10,10 @@ from datetime import date
 import pytest
 
 
-# ── Hilfsfunktion ─────────────────────────────────────────────────────────────
+# ── Helpers ─────────────────────────────────────────────────────────────
 
 def _create_invoice(db, **kwargs):
-    """Erstellt eine Test-Rechnung in der DB."""
+    """Create a test invoice in the DB."""
     from app.models import Invoice
     defaults = {
         "filename":    "test.pdf",
@@ -29,9 +29,9 @@ def _create_invoice(db, **kwargs):
 
 
 def _create_transaction(db, **kwargs):
-    """Erstellt eine Test-Buchung in der DB."""
+    """Create a test transaction in the DB."""
     from app.models import Transaction, Account
-    # Konto anlegen falls nötig
+    # Create a default account if needed
     account = Account.query.first()
     if not account:
         account = Account(name="Test", iban="CH00TEST", type="checking", currency="CHF")
@@ -41,7 +41,7 @@ def _create_transaction(db, **kwargs):
     defaults = {
         "account_id":      account.id,
         "date":            date(2026, 3, 1),
-        "raw_description": "Migros",
+        "raw_description": "Sample Merchant",
         "amount":          42.0,
         "type":            "expense",
         "import_hash":     "txhash_" + str(id(kwargs)),
@@ -72,15 +72,15 @@ class TestDashboard:
         r = client.get("/")
         assert r.status_code == 200
 
-    def test_html_enthaelt_cream(self, client):
+    def test_html_contains_cream_branding(self, client):
         r = client.get("/")
-        assert b"cream" in r.data.lower()
+        assert b"C.R.E.A.M." in r.data
 
 
-# ── Import-Endpunkt ───────────────────────────────────────────────────────────
+# ── Import Endpoint ───────────────────────────────────────────────────────────
 
 class TestImport:
-    def test_post_import_gibt_json(self, client):
+    def test_post_import_returns_json(self, client):
         r = client.post("/import")
         assert r.status_code == 200
         data = json.loads(r.data)
@@ -89,12 +89,12 @@ class TestImport:
         assert "transactions" in data["stats"]
         assert "invoices" in data["stats"]
 
-    def test_get_import_nicht_erlaubt(self, client):
+    def test_get_import_not_allowed(self, client):
         r = client.get("/import")
         assert r.status_code == 405
 
 
-# ── Rechnungen API ────────────────────────────────────────────────────────────
+# ── Invoices API ────────────────────────────────────────────────────────────
 
 class TestInvoiceApi:
     def test_list_invoices(self, client, db):
@@ -114,7 +114,7 @@ class TestInvoiceApi:
         assert len(data) == 1
         assert data[0]["status"] == "pending"
 
-    def test_patch_betrag(self, client, db):
+    def test_patch_amount(self, client, db):
         inv = _create_invoice(db, import_hash="h_betrag")
         r = client.patch(
             f"/api/invoices/{inv.id}",
@@ -125,8 +125,8 @@ class TestInvoiceApi:
         data = json.loads(r.data)
         assert data["amount"] == 1470.0
 
-    def test_patch_betrag_schweizer_format(self, client, db):
-        """Apostroph-Format wird akzeptiert."""
+    def test_patch_amount_swiss_format(self, client, db):
+        """Apostrophe amount format is accepted."""
         inv = _create_invoice(db, import_hash="h_ch")
         r = client.patch(
             f"/api/invoices/{inv.id}",
@@ -136,7 +136,7 @@ class TestInvoiceApi:
         assert r.status_code == 200
         assert json.loads(r.data)["amount"] == 1470.0
 
-    def test_patch_negativer_betrag_abgelehnt(self, client, db):
+    def test_patch_negative_amount_rejected(self, client, db):
         inv = _create_invoice(db, import_hash="h_neg")
         r = client.patch(
             f"/api/invoices/{inv.id}",
@@ -145,7 +145,7 @@ class TestInvoiceApi:
         )
         assert r.status_code == 400
 
-    def test_patch_faelligkeit(self, client, db):
+    def test_patch_due_date(self, client, db):
         inv = _create_invoice(db, import_hash="h_due")
         r = client.patch(
             f"/api/invoices/{inv.id}",
@@ -155,7 +155,26 @@ class TestInvoiceApi:
         assert r.status_code == 200
         assert json.loads(r.data)["due_date"] == "2026-05-31"
 
-    def test_patch_ungueltiges_datum_abgelehnt(self, client, db):
+    def test_patch_source_year(self, client, db):
+        inv = _create_invoice(db, import_hash="h_src_year")
+        r = client.patch(
+            f"/api/invoices/{inv.id}",
+            data=json.dumps({"source_year": 2026}),
+            content_type="application/json",
+        )
+        assert r.status_code == 200
+        assert json.loads(r.data)["source_year"] == 2026
+
+    def test_patch_source_year_invalid(self, client, db):
+        inv = _create_invoice(db, import_hash="h_src_bad")
+        r = client.patch(
+            f"/api/invoices/{inv.id}",
+            data=json.dumps({"source_year": "xx"}),
+            content_type="application/json",
+        )
+        assert r.status_code == 400
+
+    def test_patch_invalid_date_rejected(self, client, db):
         inv = _create_invoice(db, import_hash="h_bad_date")
         r = client.patch(
             f"/api/invoices/{inv.id}",
@@ -174,26 +193,16 @@ class TestInvoiceApi:
         assert r.status_code == 200
         assert json.loads(r.data)["status"] == "paid"
 
-    def test_patch_ungueltiger_status_abgelehnt(self, client, db):
+    def test_patch_invalid_status_rejected(self, client, db):
         inv = _create_invoice(db, import_hash="h_bad_status")
         r = client.patch(
             f"/api/invoices/{inv.id}",
-            data=json.dumps({"status": "ungültig"}),
+            data=json.dumps({"status": "invalid"}),
             content_type="application/json",
         )
         assert r.status_code == 400
 
-    def test_sent_to_kk_nicht_mehr_akzeptiert(self, client, db):
-        """sent_to_kk wurde entfernt und wird vom API abgelehnt."""
-        inv = _create_invoice(db, import_hash="h_kk")
-        r = client.patch(
-            f"/api/invoices/{inv.id}",
-            data=json.dumps({"status": "sent_to_kk"}),
-            content_type="application/json",
-        )
-        assert r.status_code == 400
-
-    def test_patch_nicht_gefunden(self, client, db):
+    def test_patch_not_found(self, client, db):
         r = client.patch(
             "/api/invoices/99999",
             data=json.dumps({"amount": 100}),
@@ -218,31 +227,31 @@ class TestInvoiceApi:
     def test_remember_invoice_title_creates_rule(self, client, db):
         from app.models import InvoiceTitleRule
 
-        cat = _create_category(db, name="Versicherung")
+        cat = _create_category(db, name="Insurance")
         inv = _create_invoice(
             db,
             import_hash="h_rule_create",
-            raw_issuer="Helsana Versicherungen AG",
-            title="Helsana April",
+            raw_issuer="Example Health Insurance AG",
+            title="Example Health April",
             category_id=cat.id,
         )
 
         r = client.post(
             f"/api/invoices/{inv.id}/remember-title",
-            data=json.dumps({"title": "Helsana"}),
+            data=json.dumps({"title": "Example Health"}),
             content_type="application/json",
         )
 
         assert r.status_code == 200
         data = json.loads(r.data)
         assert data["created"] is True
-        assert data["rule"]["raw_issuer"] == "Helsana Versicherungen AG"
-        assert data["rule"]["title"] == "Helsana"
+        assert data["rule"]["raw_issuer"] == "Example Health Insurance AG"
+        assert data["rule"]["title"] == "Example Health"
         assert data["rule"]["category_id"] == cat.id
 
-        rule = InvoiceTitleRule.query.filter_by(raw_issuer="Helsana Versicherungen AG").first()
+        rule = InvoiceTitleRule.query.filter_by(raw_issuer="Example Health Insurance AG").first()
         assert rule is not None
-        assert rule.title == "Helsana"
+        assert rule.title == "Example Health"
         assert rule.category_id == cat.id
 
     def test_remember_invoice_title_updates_existing_rule(self, client, db):
@@ -251,12 +260,12 @@ class TestInvoiceApi:
         inv = _create_invoice(
             db,
             import_hash="h_rule_update",
-            raw_issuer="Steueramt des Kantons Solothurn",
-            title="Steuern",
+            raw_issuer="Cantonal Tax Office Example",
+            title="Taxes",
         )
         db.session.add(
             InvoiceTitleRule(
-                raw_issuer="Steueramt des Kantons Solothurn",
+                raw_issuer="Cantonal Tax Office Example",
                 title="Alt",
             )
         )
@@ -264,14 +273,14 @@ class TestInvoiceApi:
 
         r = client.post(
             f"/api/invoices/{inv.id}/remember-title",
-            data=json.dumps({"title": "Steueramt Solothurn"}),
+            data=json.dumps({"title": "Tax Office Example"}),
             content_type="application/json",
         )
 
         assert r.status_code == 200
         data = json.loads(r.data)
         assert data["created"] is False
-        assert data["rule"]["title"] == "Steueramt Solothurn"
+        assert data["rule"]["title"] == "Tax Office Example"
 
     def test_remember_invoice_title_requires_raw_issuer(self, client, db):
         inv = _create_invoice(
@@ -290,7 +299,7 @@ class TestInvoiceApi:
         assert r.status_code == 400
 
     def test_patch_invoice_category(self, client, db):
-        cat = _create_category(db, name="Steuern")
+        cat = _create_category(db, name="Taxes")
         inv = _create_invoice(db, import_hash="h_inv_cat")
 
         r = client.patch(
@@ -302,7 +311,7 @@ class TestInvoiceApi:
         assert r.status_code == 200
         data = json.loads(r.data)
         assert data["category_id"] == cat.id
-        assert data["category_name"] == "Steuern"
+        assert data["category_name"] == "Taxes"
 
     def test_list_categories_includes_usage_counts(self, client, db):
         cat = _create_category(db, name="Haushalt")
@@ -389,34 +398,34 @@ class TestInvoiceApi:
 
         assert r.status_code == 400
 
-    def test_titel_korrektur_bleibt_bei_reimport(self, client, db):
+    def test_title_correction_persists_on_reimport(self, client, db):
         """
-        import_hash schützt manuelle Korrekturen beim Re-Import.
-        Gleicher Hash → Eintrag wird übersprungen → Titel bleibt erhalten.
+        import_hash protects manual corrections during re-import.
+        Same hash -> entry is skipped -> title remains unchanged.
         """
         inv = _create_invoice(db, import_hash="stable_hash", title=None)
-        # Manuell Titel setzen
+        # Set title manually
         client.patch(
             f"/api/invoices/{inv.id}",
-            data=json.dumps({"title": "Krankenkasse Januar"}),
+            data=json.dumps({"title": "Insurance January"}),
             content_type="application/json",
         )
-        # Zweiter Import: würde überspringen (gleicher Hash)
+        # Second import: would be skipped (same hash)
         from app.models import Invoice
         count_before = Invoice.query.count()
-        # Direkt testen: Filter funktioniert
+        # Verify directly: filter works
         existing = Invoice.query.filter_by(import_hash="stable_hash").first()
         assert existing is not None
-        assert existing.title == "Krankenkasse Januar"
+        assert existing.title == "Insurance January"
         assert Invoice.query.count() == count_before
 
 
-# ── Buchungen API ─────────────────────────────────────────────────────────────
+# ── Transactions API ─────────────────────────────────────────────────────────────
 
 def _create_account(db, **kwargs):
-    """Erstellt ein Test-Konto — für Multi-Konto-Tests."""
+    """Create a test account for multi-account tests."""
     from app.models import Account
-    defaults = {"name": "Testkonto", "type": "checking", "currency": "CHF"}
+    defaults = {"name": "Test account", "type": "checking", "currency": "CHF"}
     defaults.update(kwargs)
     acc = Account(**defaults)
     db.session.add(acc)
@@ -433,7 +442,7 @@ class TestTransactionApi:
         data = json.loads(r.data)
         assert len(data) == 2
 
-    def test_list_transactions_filter_monat(self, client, db):
+    def test_list_transactions_filter_month(self, client, db):
         _create_transaction(db, import_hash="t_jan", date=date(2026, 1, 15))
         _create_transaction(db, import_hash="t_mar", date=date(2026, 3, 1))
         r = client.get("/api/transactions?month=2026-01")
@@ -442,58 +451,58 @@ class TestTransactionApi:
         assert len(data) == 1
         assert data[0]["date"] == "2026-01-15"
 
-    def test_list_transactions_filter_konto(self, client, db):
-        """Buchungen eines bestimmten Kontos werden korrekt gefiltert."""
+    def test_list_transactions_filter_account(self, client, db):
+        """Transactions are correctly filtered for a specific account."""
         from app.models import Account
-        konto_a = _create_account(db, name="BEKB", iban="CH001")
-        konto_b = _create_account(db, name="Raiffeisen", iban="CH002")
+        account_a = _create_account(db, name="Example Bank A", iban="CH001")
+        account_b = _create_account(db, name="Example Bank B", iban="CH002")
         db.session.commit()
-        _create_transaction(db, import_hash="ta1", account_id=konto_a.id)
-        _create_transaction(db, import_hash="ta2", account_id=konto_a.id)
-        _create_transaction(db, import_hash="tb1", account_id=konto_b.id)
-        r = client.get(f"/api/transactions?account_id={konto_a.id}")
+        _create_transaction(db, import_hash="ta1", account_id=account_a.id)
+        _create_transaction(db, import_hash="ta2", account_id=account_a.id)
+        _create_transaction(db, import_hash="tb1", account_id=account_b.id)
+        r = client.get(f"/api/transactions?account_id={account_a.id}")
         assert r.status_code == 200
         data = json.loads(r.data)
         assert len(data) == 2
-        assert all(tx["account_id"] == konto_a.id for tx in data)
+        assert all(tx["account_id"] == account_a.id for tx in data)
 
-    def test_list_transactions_filter_konto_und_monat(self, client, db):
-        """Konto + Monat kombiniert filtern."""
+    def test_list_transactions_filter_account_and_month(self, client, db):
+        """Filter by account + month together."""
         from app.models import Account
-        konto = _create_account(db, name="BEKB Kombi", iban="CH003")
+        account = _create_account(db, name="Example Bank Combo", iban="CH003")
         db.session.commit()
-        _create_transaction(db, import_hash="km_jan", account_id=konto.id, date=date(2026, 1, 10))
-        _create_transaction(db, import_hash="km_feb", account_id=konto.id, date=date(2026, 2, 10))
-        r = client.get(f"/api/transactions?account_id={konto.id}&month=2026-01")
+        _create_transaction(db, import_hash="km_jan", account_id=account.id, date=date(2026, 1, 10))
+        _create_transaction(db, import_hash="km_feb", account_id=account.id, date=date(2026, 2, 10))
+        r = client.get(f"/api/transactions?account_id={account.id}&month=2026-01")
         assert r.status_code == 200
         data = json.loads(r.data)
         assert len(data) == 1
         assert data[0]["date"] == "2026-01-10"
 
     def test_list_transactions_filter_iban(self, client, db):
-        konto_a = _create_account(db, name="BEKB", iban="CH001")
-        konto_b = _create_account(db, name="Raiffeisen", iban="CH002")
+        account_a = _create_account(db, name="Example Bank A", iban="CH001")
+        account_b = _create_account(db, name="Example Bank B", iban="CH002")
         db.session.commit()
-        _create_transaction(db, import_hash="iban_a", account_id=konto_a.id)
-        _create_transaction(db, import_hash="iban_b", account_id=konto_b.id)
+        _create_transaction(db, import_hash="iban_a", account_id=account_a.id)
+        _create_transaction(db, import_hash="iban_b", account_id=account_b.id)
 
         r = client.get("/api/transactions?iban=CH002")
 
         assert r.status_code == 200
         data = json.loads(r.data)
         assert len(data) == 1
-        assert data[0]["account_id"] == konto_b.id
+        assert data[0]["account_id"] == account_b.id
 
-    def test_list_transactions_filter_ungueltiger_account(self, client, db):
-        """Ungültiger account_id-Wert wird ignoriert, alle Buchungen kommen zurück."""
+    def test_list_transactions_filter_invalid_account(self, client, db):
+        """Invalid account_id value is ignored and all transactions are returned."""
         _create_transaction(db, import_hash="tug1")
-        r = client.get("/api/transactions?account_id=kein_int")
+        r = client.get("/api/transactions?account_id=not_an_int")
         assert r.status_code == 200
-        # Ungültiger Wert ignoriert → 1 Buchung zurück
+        # Invalid value ignored -> 1 transaction returned
         data = json.loads(r.data)
         assert len(data) == 1
 
-    def test_patch_titel(self, client, db):
+    def test_patch_title(self, client, db):
         tx = _create_transaction(db, import_hash="t_titel")
         r = client.patch(
             f"/api/transactions/{tx.id}",
@@ -530,12 +539,12 @@ class TestTransactionApi:
         assert data[0]["category_id"] == cat_b.id
 
 
-# ── Dashboard Filter ───────────────────────────────────────────────────────────
+# ── Dashboard Filters ───────────────────────────────────────────────────────────
 
 class TestDashboardFilter:
-    def test_dashboard_filter_konto(self, client, db):
-        """Dashboard mit ?account_id gibt 200 zurück."""
-        acc = _create_account(db, name="Filter-BEKB", iban="CH009")
+    def test_dashboard_filter_account(self, client, db):
+        """Dashboard with `?account_id` returns 200."""
+        acc = _create_account(db, name="Filter-Bank", iban="CH009")
         db.session.commit()
         _create_transaction(db, import_hash="df1", account_id=acc.id)
         r = client.get(f"/?account_id={acc.id}")
@@ -549,48 +558,48 @@ class TestDashboardFilter:
         assert r.status_code == 200
 
     def test_dashboard_filter_tx_year(self, client, db):
-        """Dashboard mit ?tx_year filtert nach Jahr."""
+        """Dashboard with `?tx_year` filters by year."""
         _create_transaction(db, import_hash="dfy1", date=date(2025, 6, 1))
         _create_transaction(db, import_hash="dfy2", date=date(2026, 2, 14))
         r = client.get("/?tx_year=2026")
         assert r.status_code == 200
 
     def test_dashboard_filter_tx_month(self, client, db):
-        """Dashboard mit ?tx_month filtert nach Monat."""
+        """Dashboard with `?tx_month` filters by month."""
         _create_transaction(db, import_hash="dfmo1", date=date(2026, 2, 14))
         r = client.get("/?tx_month=2")
         assert r.status_code == 200
 
-    def test_dashboard_filter_tx_year_und_month(self, client, db):
-        """Dashboard mit ?tx_year und ?tx_month kombiniert gibt 200 zurück."""
-        acc = _create_account(db, name="BEKB Kombi2", iban="CH010")
+    def test_dashboard_filter_tx_year_and_month(self, client, db):
+        """Dashboard with `?tx_year` and `?tx_month` returns 200."""
+        acc = _create_account(db, name="Example Bank Combo 2", iban="CH010")
         db.session.commit()
         _create_transaction(db, import_hash="dfkm1", account_id=acc.id, date=date(2026, 3, 5))
         r = client.get(f"/?account_id={acc.id}&tx_year=2026&tx_month=3")
         assert r.status_code == 200
 
-    def test_dashboard_filter_ungueltig_gibt_200(self, client, db):
-        """Ungültige Filter-Werte werden ignoriert, kein 500."""
-        r = client.get("/?account_id=xyz&tx_year=kein&tx_month=kein")
+    def test_dashboard_filter_invalid_returns_200(self, client, db):
+        """Invalid filter values are ignored (no 500)."""
+        r = client.get("/?account_id=xyz&tx_year=bad&tx_month=bad")
         assert r.status_code == 200
 
     def test_dashboard_filter_transaction_category(self, client, db):
-        cat = _create_category(db, name="Lebensmittel")
-        _create_transaction(db, import_hash="df_cat_match", raw_description="Migros", category_id=cat.id)
-        _create_transaction(db, import_hash="df_cat_other", raw_description="SBB")
+        cat = _create_category(db, name="Groceries")
+        _create_transaction(db, import_hash="df_cat_match", raw_description="Sample Grocery", category_id=cat.id)
+        _create_transaction(db, import_hash="df_cat_other", raw_description="Sample Transport")
 
         r = client.get(f"/?tx_category_id={cat.id}")
 
         assert r.status_code == 200
-        assert b"Migros" in r.data
-        assert b"SBB" not in r.data
+        assert b"Sample Grocery" in r.data
+        assert b"Sample Transport" not in r.data
 
 
-# ── Rechnungen Filter ──────────────────────────────────────────────────────────
+# ── Invoice Filters ──────────────────────────────────────────────────────────
 
 class TestInvoiceFilter:
     def test_api_filter_status_paid(self, client, db):
-        """API: nur bezahlte Rechnungen."""
+        """API: only paid invoices."""
         _create_invoice(db, import_hash="f_p1", status="pending")
         _create_invoice(db, import_hash="f_paid", status="paid")
         r = client.get("/api/invoices?status=paid")
@@ -600,7 +609,7 @@ class TestInvoiceFilter:
         assert data[0]["status"] == "paid"
 
     def test_api_filter_year(self, client, db):
-        """API: Jahresfilter auf due_date."""
+        """API: year filter on due_date."""
         _create_invoice(db, import_hash="f_y25", due_date=date(2025, 6, 1))
         _create_invoice(db, import_hash="f_y26", due_date=date(2026, 3, 31))
         r = client.get("/api/invoices?year=2026")
@@ -609,8 +618,8 @@ class TestInvoiceFilter:
         assert len(data) == 1
         assert data[0]["due_date"] == "2026-03-31"
 
-    def test_api_filter_status_und_year(self, client, db):
-        """API: Status + Jahr kombiniert."""
+    def test_api_filter_status_and_year(self, client, db):
+        """API: combined status + year filter."""
         _create_invoice(db, import_hash="f_sy1", status="pending", due_date=date(2026, 1, 1))
         _create_invoice(db, import_hash="f_sy2", status="paid",    due_date=date(2026, 2, 1))
         _create_invoice(db, import_hash="f_sy3", status="pending", due_date=date(2025, 12, 1))
@@ -621,55 +630,55 @@ class TestInvoiceFilter:
         assert data[0]["due_date"] == "2026-01-01"
 
     def test_dashboard_inv_filter_paid(self, client, db):
-        """Dashboard: ?inv_status=paid gibt 200 zurück."""
+        """Dashboard: `?inv_status=paid` returns 200."""
         _create_invoice(db, import_hash="df_inv1", status="paid")
         r = client.get("/?inv_status=paid")
         assert r.status_code == 200
 
-    def test_dashboard_inv_filter_alle(self, client, db):
-        """Dashboard: ?inv_status= (leer) zeigt alle Rechnungen."""
+    def test_dashboard_inv_filter_all(self, client, db):
+        """Dashboard: empty `?inv_status=` shows all invoices."""
         _create_invoice(db, import_hash="df_all1", status="pending")
         _create_invoice(db, import_hash="df_all2", status="paid")
         r = client.get("/?inv_status=")
         assert r.status_code == 200
 
     def test_dashboard_inv_filter_year(self, client, db):
-        """Dashboard: ?inv_year=2026 gibt 200 zurück."""
+        """Dashboard: `?inv_year=2026` returns 200."""
         _create_invoice(db, import_hash="df_yr1", due_date=date(2026, 5, 1))
         r = client.get("/?inv_status=pending&inv_year=2026")
         assert r.status_code == 200
 
     def test_dashboard_inv_filter_source_year(self, client, db):
-        """Dashboard: source_year wird für Jahresfilter bevorzugt."""
-        # Rechnung ohne due_date aber mit source_year=2026
+        """Dashboard: source_year is preferred for year filtering."""
+        # Invoice without due_date but with source_year=2026
         _create_invoice(db, import_hash="df_sy1", status="paid", source_year=2026)
-        # Rechnung mit due_date 2025 aber source_year=2026 → soll bei 2026 erscheinen
+        # Invoice with due_date 2025 and source_year=2026 should appear in 2026
         _create_invoice(db, import_hash="df_sy2", status="paid", due_date=date(2025, 1, 1), source_year=2026)
-        # Rechnung mit due_date 2025, kein source_year → soll bei 2026 NICHT erscheinen
+        # Invoice with due_date 2025 and no source_year should NOT appear in 2026
         _create_invoice(db, import_hash="df_sy3", status="paid", due_date=date(2025, 1, 1))
         r = client.get("/?inv_status=paid&inv_year=2026")
         assert r.status_code == 200
-        # Nur die beiden mit source_year=2026
-        assert b"df_sy3" not in r.data  # schwacher Check — hauptsache kein 500
+        # Only the two with source_year=2026
+        assert b"df_sy3" not in r.data  # weak check - mainly verifies no 500
 
     def test_dashboard_inv_filter_month(self, client, db):
-        """Dashboard: ?inv_month=5 filtert nach Monat."""
+        """Dashboard: `?inv_month=5` filters by month."""
         _create_invoice(db, import_hash="df_mo1", due_date=date(2026, 5, 15))
         _create_invoice(db, import_hash="df_mo2", due_date=date(2026, 3, 10))
         r = client.get("/?inv_status=pending&inv_month=5")
         assert r.status_code == 200
 
     def test_api_filter_inv_month(self, client, db):
-        """API: Monatsfilter auf due_date."""
+        """API: month filtering on due_date."""
         _create_invoice(db, import_hash="api_mo1", due_date=date(2026, 5, 15))
         _create_invoice(db, import_hash="api_mo2", due_date=date(2026, 3, 10))
         r = client.get("/api/invoices?year=2026&status=pending")
         data = json.loads(r.data)
-        assert len(data) == 2  # beide im 2026, kein Monatsfilter
+        assert len(data) == 2  # both are in 2026; no month filter here
 
     def test_api_filter_invoice_category(self, client, db):
-        cat_a = _create_category(db, name="Steuern")
-        cat_b = _create_category(db, name="Versicherung")
+        cat_a = _create_category(db, name="Taxes")
+        cat_b = _create_category(db, name="Insurance")
         _create_invoice(db, import_hash="f_cat_a", category_id=cat_a.id)
         _create_invoice(db, import_hash="f_cat_b", category_id=cat_b.id)
 
@@ -681,7 +690,7 @@ class TestInvoiceFilter:
         assert data[0]["category_id"] == cat_b.id
 
     def test_dashboard_invoice_filter_category(self, client, db):
-        cat = _create_category(db, name="Versicherung")
+        cat = _create_category(db, name="Insurance")
         _create_invoice(db, import_hash="df_inv_cat_match", filename="versicherung.pdf", category_id=cat.id)
         _create_invoice(db, import_hash="df_inv_cat_other", filename="steuer.pdf")
 
@@ -696,10 +705,10 @@ class TestInvoiceFilter:
 
 def _create_transaction_with_lines(db, lines_data, **kwargs):
     """
-    Erstellt eine Buchung mit Detailpositionen.
+    Create a transaction with detail lines.
 
-    Analogie: Ein E-Banking-Auftrag mit mehreren Überweisungen —
-    die Hauptbuchung enthält eine Liste von Einzel-Positionen.
+    Analogy: an e-banking order with multiple transfers.
+    The main transaction contains a list of sub-lines.
     """
     from app.models import TransactionLine
     tx = _create_transaction(db, **kwargs)
@@ -717,42 +726,42 @@ def _create_transaction_with_lines(db, lines_data, **kwargs):
 
 
 class TestTransactionLine:
-    def test_transaction_ohne_lines(self, client, db):
-        """Normale Buchung ohne Detailpositionen: lines-Liste ist leer."""
+    def test_transaction_without_lines(self, client, db):
+        """Regular transaction without detail lines: lines list is empty."""
         tx = _create_transaction(db, import_hash="tl_no_lines")
         r = client.get("/api/transactions")
         data = json.loads(r.data)
         assert len(data) == 1
         assert data[0]["lines"] == []
 
-    def test_transaction_mit_einer_line(self, client, db):
-        """E-Banking-Auftrag mit einer Detailposition."""
+    def test_transaction_with_one_line(self, client, db):
+        """E-banking order with one detail line."""
         _create_transaction_with_lines(
             db,
             import_hash="tl_one",
             raw_description="Ihr E-Banking-Auftrag",
-            amount=250.0,
-            lines_data=[{"recipient": "Pro Infirmis", "amount": 250.0, "iban": "CH4400791234567890125"}],
+            amount=123.45,
+            lines_data=[{"recipient": "Sample Charity", "amount": 123.45, "iban": "CH4400791234567890125"}],
         )
         r = client.get("/api/transactions")
         data = json.loads(r.data)
         assert len(data) == 1
         lines = data[0]["lines"]
         assert len(lines) == 1
-        assert lines[0]["recipient"] == "Pro Infirmis"
-        assert lines[0]["amount"] == 250.0
+        assert lines[0]["recipient"] == "Sample Charity"
+        assert lines[0]["amount"] == 123.45
         assert lines[0]["iban"] == "CH4400791234567890125"
 
-    def test_transaction_mit_mehreren_lines(self, client, db):
-        """E-Banking-Auftrag mit mehreren Empfängern."""
+    def test_transaction_with_multiple_lines(self, client, db):
+        """E-banking order with multiple recipients."""
         _create_transaction_with_lines(
             db,
             import_hash="tl_multi",
             raw_description="Ihr E-Banking-Auftrag",
-            amount=2052.80,
+            amount=1000.0,
             lines_data=[
-                {"recipient": "Alpenkasse", "amount": 561.70, "iban": "CH5600791234567890123"},
-                {"recipient": "Nordlicht",  "amount": 1491.10, "iban": "CH5600791234567890124"},
+                {"recipient": "Sample Insurance", "amount": 300.0, "iban": "CH5600791234567890123"},
+                {"recipient": "Sample Clinic",  "amount": 700.0, "iban": "CH5600791234567890124"},
             ],
         )
         r = client.get("/api/transactions")
@@ -760,11 +769,11 @@ class TestTransactionLine:
         assert len(data) == 1
         lines = data[0]["lines"]
         assert len(lines) == 2
-        assert lines[0]["recipient"] == "Alpenkasse"
-        assert lines[1]["recipient"] == "Nordlicht"
+        assert lines[0]["recipient"] == "Sample Insurance"
+        assert lines[1]["recipient"] == "Sample Clinic"
 
-    def test_lines_reihenfolge(self, client, db):
-        """Detailpositionen werden nach position-Feld sortiert zurückgegeben."""
+    def test_lines_order(self, client, db):
+        """Detail lines are returned sorted by the position field."""
         _create_transaction_with_lines(
             db,
             import_hash="tl_order",
@@ -781,8 +790,8 @@ class TestTransactionLine:
         lines = data[0]["lines"]
         assert [l["recipient"] for l in lines] == ["Erst", "Zweite", "Dritte"]
 
-    def test_lines_ohne_iban(self, client, db):
-        """Detailposition ohne IBAN: iban-Feld ist None."""
+    def test_lines_without_iban(self, client, db):
+        """Detail line without IBAN: iban field is None."""
         _create_transaction_with_lines(
             db,
             import_hash="tl_no_iban",
@@ -796,8 +805,8 @@ class TestTransactionLine:
 
     def test_lines_cascade_delete(self, client, db):
         """
-        Wenn eine Buchung gelöscht wird, werden auch ihre TransactionLines gelöscht.
-        (cascade='all, delete-orphan' im Modell)
+        When a transaction is deleted, its TransactionLines are deleted as well.
+        (cascade='all, delete-orphan' in the model)
         """
         from app.models import Transaction, TransactionLine
         tx = _create_transaction_with_lines(
@@ -805,30 +814,30 @@ class TestTransactionLine:
             import_hash="tl_cascade",
             raw_description="Ihr E-Banking-Auftrag",
             amount=100.0,
-            lines_data=[{"recipient": "Wird gelöscht", "amount": 100.0}],
+            lines_data=[{"recipient": "To be deleted", "amount": 100.0}],
         )
         tx_id = tx.id
         assert TransactionLine.query.filter_by(transaction_id=tx_id).count() == 1
-        # Buchung löschen
+        # Delete transaction
         db.session.delete(db.session.get(Transaction, tx_id))
         db.session.commit()
-        # Detailpositionen müssen weg sein
+        # Detail lines must be gone
         assert TransactionLine.query.filter_by(transaction_id=tx_id).count() == 0
 
-    def test_dashboard_zeigt_buchung_mit_lines(self, client, db):
-        """Dashboard rendert ohne Fehler, wenn eine Buchung Detailpositionen hat."""
+    def test_dashboard_shows_transaction_with_lines(self, client, db):
+        """Dashboard renders without errors when a transaction has detail lines."""
         _create_transaction_with_lines(
             db,
             import_hash="tl_dash",
             raw_description="Ihr E-Banking-Auftrag",
             amount=500.0,
             lines_data=[
-                {"recipient": "Alpenkasse", "amount": 250.0},
-                {"recipient": "Nordlicht",  "amount": 250.0},
+                {"recipient": "Sample Insurance", "amount": 250.0},
+                {"recipient": "Sample Clinic",  "amount": 125.0},
             ],
         )
         r = client.get("/")
         assert r.status_code == 200
-        # Toggle-Button und Empfänger-Namen im HTML
+        # Toggle button and recipient names in the HTML
         assert b"Positionen" in r.data
-        assert b"Alpenkasse" in r.data
+        assert b"Sample Insurance" in r.data
