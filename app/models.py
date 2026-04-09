@@ -55,6 +55,26 @@ class Category(db.Model):
     def __repr__(self) -> str:
         return f"<Category {self.name}>"
 
+    @property
+    def path(self) -> str:
+        """Slash-separated category path from root to this node."""
+        names: list[str] = []
+        cursor: Category | None = self
+        while cursor is not None:
+            names.append(cursor.name)
+            cursor = cursor.parent
+        return "/".join(reversed(names))
+
+    @property
+    def depth(self) -> int:
+        """Zero-based hierarchy depth."""
+        d = 0
+        cursor = self.parent
+        while cursor is not None:
+            d += 1
+            cursor = cursor.parent
+        return d
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id":        self.id,
@@ -112,18 +132,18 @@ class Transaction(db.Model):
     account_id     : Mapped[int]            = mapped_column(
         Integer, ForeignKey("accounts.id"), nullable=False
     )
-    date           : Mapped[date]           = mapped_column(db.Date, nullable=False)
+    date           : Mapped[date]           = mapped_column(db.Date, nullable=False, index=True)
     raw_description: Mapped[str]            = mapped_column(Text, nullable=False)
     title          : Mapped[Optional[str]]  = mapped_column(String(200), nullable=True)
     amount         : Mapped[float]          = mapped_column(Float, nullable=False)
     type           : Mapped[str]            = mapped_column(String(10), nullable=False)
     saldo          : Mapped[Optional[float]]= mapped_column(Float, nullable=True)
     category_id    : Mapped[Optional[int]]  = mapped_column(
-        Integer, ForeignKey("categories.id"), nullable=True
+        Integer, ForeignKey("categories.id"), nullable=True, index=True
     )
     pdf_source     : Mapped[Optional[str]]  = mapped_column(String(200), nullable=True)
     import_hash    : Mapped[str]            = mapped_column(
-        String(64), unique=True, nullable=False
+        String(64), unique=True, nullable=False, index=True
     )
     notes          : Mapped[Optional[str]]  = mapped_column(Text, nullable=True)
     created_at     : Mapped[datetime]       = mapped_column(
@@ -214,16 +234,16 @@ class Invoice(db.Model):
     raw_issuer  : Mapped[Optional[str]]  = mapped_column(String(200), nullable=True)
     amount      : Mapped[Optional[float]]= mapped_column(Float, nullable=True)
     invoice_date: Mapped[Optional[date]] = mapped_column(db.Date, nullable=True)
-    due_date    : Mapped[Optional[date]] = mapped_column(db.Date, nullable=True)
+    due_date    : Mapped[Optional[date]] = mapped_column(db.Date, nullable=True, index=True)
     paid_date   : Mapped[Optional[date]] = mapped_column(db.Date, nullable=True)
     source_year : Mapped[Optional[int]]  = mapped_column(Integer, nullable=True)
-    status      : Mapped[str]            = mapped_column(String(20), default="pending")
+    status      : Mapped[str]            = mapped_column(String(20), default="pending", index=True)
     category_id : Mapped[Optional[int]]  = mapped_column(
-        Integer, ForeignKey("categories.id"), nullable=True
+        Integer, ForeignKey("categories.id"), nullable=True, index=True
     )
     notes       : Mapped[Optional[str]]  = mapped_column(Text, nullable=True)
     import_hash : Mapped[str]            = mapped_column(
-        String(64), unique=True, nullable=False
+        String(64), unique=True, nullable=False, index=True
     )
     created_at  : Mapped[datetime]       = mapped_column(
         db.DateTime, default=utc_now

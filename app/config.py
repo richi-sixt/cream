@@ -53,6 +53,9 @@ class Config:
     # Optional per-IBAN display names:
     ACCOUNT_NAME_OVERRIDES: dict[str, str] = _env_json_dict("ACCOUNT_NAME_OVERRIDES")
 
+    # Serve PDFs inline via HTTP instead of opening in OS viewer:
+    SERVE_PDF_INLINE: bool = os.environ.get("SERVE_PDF_INLINE", "").lower() in ("true", "1", "yes")
+
 class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = f"sqlite:///{BASE_DIR / 'data' / 'cream.db'}"

@@ -1,26 +1,17 @@
 """Dashboard routes and main views."""
 
 import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 
-from flask import render_template, jsonify, abort, current_app, request
+from flask import render_template, jsonify, abort, current_app, request, send_file
 
-from sqlalchemy import desc, extract, func, nulls_last, select
+from sqlalchemy import and_, cast, desc, extract, func, nulls_last, or_, select, String, union
 
 from app import db
 from app.main import bp
 from app.models import Account, Category, Invoice, Transaction, TransactionLine
-
-
-def _category_path(cat: Category) -> str:
-    """Build a display path like `Energie/Gas` from the hierarchy."""
-    names: list[str] = []
-    cursor: Category | None = cat
-    while cursor is not None:
-        names.append(cursor.name)
-        cursor = cursor.parent
-    return "/".join(reversed(names))
 
 
 @bp.route("/")
@@ -105,7 +96,6 @@ def dashboard():
     if inv_year:
         try:
             y = int(inv_year)
-            from sqlalchemy import or_, and_
             inv_q = inv_q.filter(
                 or_(
                     Invoice.source_year == y,
@@ -122,7 +112,6 @@ def dashboard():
 
     invoices = inv_q.all()
 
-    from sqlalchemy import union, literal_column, cast, String
     years_from_source = select(cast(Invoice.source_year, String).label("yr")).where(Invoice.source_year.is_not(None))
     years_from_due    = select(func.strftime("%Y", Invoice.due_date).label("yr")).where(
         Invoice.due_date.is_not(None), Invoice.source_year.is_(None)
@@ -140,7 +129,7 @@ def dashboard():
     total_pending = sum(i.amount or 0.0 for i in invoices)
     categories = Category.query.order_by(Category.name).all()
     category_options = [
-        {"id": c.id, "name": c.name, "path": _category_path(c)}
+        {"id": c.id, "name": c.name, "path": c.path}
         for c in categories
     ]
     category_options.sort(key=lambda c: c["path"].lower())
@@ -190,7 +179,7 @@ def search_page():
     accounts = Account.query.order_by(Account.name).all()
     categories = Category.query.order_by(Category.name).all()
     category_options = [
-        {"id": c.id, "name": c.name, "path": _category_path(c)}
+        {"id": c.id, "name": c.name, "path": c.path}
         for c in categories
     ]
     category_options.sort(key=lambda c: c["path"].lower())
@@ -255,8 +244,12 @@ def open_pdf(filename: str):
     if target is None:
         abort(404, f"PDF not found: {safe_name}")
 
+    if current_app.config.get("SERVE_PDF_INLINE", False):
+        return send_file(target, mimetype="application/pdf")
+
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
     try:
-        subprocess.run(["open", str(target)], check=True)
+        subprocess.run([opener, str(target)], check=True)
     except Exception as e:
         abort(500, f"Could not open PDF: {e}")
 
