@@ -315,7 +315,8 @@ def list_invoices():
 @bp.route("/categories", methods=["GET"])
 def list_categories():
     cats = Category.query.order_by(Category.name).all()
-    return jsonify([_category_payload(c) for c in cats])
+    counts = _bulk_category_counts()
+    return jsonify([_category_payload(c, counts) for c in cats])
 
 
 @bp.route("/categories", methods=["POST"])
@@ -396,36 +397,80 @@ def delete_category(cat_id: int):
     return jsonify({"ok": True, "deleted_id": cat_id})
 
 
-def _category_payload(cat: Category) -> dict:
+def _bulk_category_counts() -> dict[int, dict[str, int]]:
+    """Fetch all category usage counts in 4 queries instead of 4*N."""
+    tx_counts = dict(
+        db.session.query(Transaction.category_id, func.count(Transaction.id))
+        .filter(Transaction.category_id.is_not(None))
+        .group_by(Transaction.category_id)
+        .all()
+    )
+    inv_counts = dict(
+        db.session.query(Invoice.category_id, func.count(Invoice.id))
+        .filter(Invoice.category_id.is_not(None))
+        .group_by(Invoice.category_id)
+        .all()
+    )
+    rule_counts = dict(
+        db.session.query(InvoiceTitleRule.category_id, func.count(InvoiceTitleRule.id))
+        .filter(InvoiceTitleRule.category_id.is_not(None))
+        .group_by(InvoiceTitleRule.category_id)
+        .all()
+    )
+    child_counts = dict(
+        db.session.query(Category.parent_id, func.count(Category.id))
+        .filter(Category.parent_id.is_not(None))
+        .group_by(Category.parent_id)
+        .all()
+    )
+    all_ids = set(tx_counts) | set(inv_counts) | set(rule_counts) | set(child_counts)
+    result: dict[int, dict[str, int]] = {}
+    for cid in all_ids:
+        result[cid] = {
+            "tx": tx_counts.get(cid, 0),
+            "inv": inv_counts.get(cid, 0),
+            "rule": rule_counts.get(cid, 0),
+            "child": child_counts.get(cid, 0),
+        }
+    return result
+
+
+def _category_payload(cat: Category, bulk_counts: dict | None = None) -> dict:
     """Return category JSON with usage counts for safe UI management."""
-    tx_count = (
-        db.session.query(func.count(Transaction.id))
-        .filter(Transaction.category_id == cat.id)
-        .scalar()
-        or 0
-    )
-    inv_count = (
-        db.session.query(func.count(Invoice.id))
-        .filter(Invoice.category_id == cat.id)
-        .scalar()
-        or 0
-    )
-    rule_count = (
-        db.session.query(func.count(InvoiceTitleRule.id))
-        .filter(InvoiceTitleRule.category_id == cat.id)
-        .scalar()
-        or 0
-    )
-    child_count = (
-        db.session.query(func.count(Category.id))
-        .filter(Category.parent_id == cat.id)
-        .scalar()
-        or 0
-    )
+    if bulk_counts is not None and cat.id in bulk_counts:
+        c = bulk_counts[cat.id]
+        tx_count, inv_count, rule_count, child_count = c["tx"], c["inv"], c["rule"], c["child"]
+    elif bulk_counts is not None:
+        tx_count = inv_count = rule_count = child_count = 0
+    else:
+        tx_count = (
+            db.session.query(func.count(Transaction.id))
+            .filter(Transaction.category_id == cat.id)
+            .scalar()
+            or 0
+        )
+        inv_count = (
+            db.session.query(func.count(Invoice.id))
+            .filter(Invoice.category_id == cat.id)
+            .scalar()
+            or 0
+        )
+        rule_count = (
+            db.session.query(func.count(InvoiceTitleRule.id))
+            .filter(InvoiceTitleRule.category_id == cat.id)
+            .scalar()
+            or 0
+        )
+        child_count = (
+            db.session.query(func.count(Category.id))
+            .filter(Category.parent_id == cat.id)
+            .scalar()
+            or 0
+        )
 
     data = cat.to_dict()
-    data["path"] = _category_path(cat)
-    data["depth"] = _category_depth(cat)
+    data["path"] = cat.path
+    data["depth"] = cat.depth
     data["tx_count"] = int(tx_count)
     data["invoice_count"] = int(inv_count)
     data["rule_count"] = int(rule_count)
@@ -450,25 +495,6 @@ def _validate_category_parent(cat: Category, parent_id: int) -> None:
             abort(400, "cyclic category hierarchy is not allowed")
         cursor = cursor.parent
 
-
-def _category_path(cat: Category) -> str:
-    """Return slash-separated category path from root to node."""
-    names: list[str] = []
-    cursor: Category | None = cat
-    while cursor is not None:
-        names.append(cursor.name)
-        cursor = cursor.parent
-    return "/".join(reversed(names))
-
-
-def _category_depth(cat: Category) -> int:
-    """Return zero-based hierarchy depth."""
-    depth = 0
-    cursor = cat.parent
-    while cursor is not None:
-        depth += 1
-        cursor = cursor.parent
-    return depth
 
 
 def _parse_csv_ints(raw: str) -> list[int]:
@@ -495,6 +521,11 @@ def _parse_csv_strings(raw: str) -> list[str]:
 
 def _normalize_search_token(value: str) -> str:
     return "".join(ch for ch in (value or "").lower() if ch.isalnum())
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE-special characters so they match literally."""
+    return value.replace("%", r"\%").replace("_", r"\_")
 
 
 def _normalized_expr(column_expr):
@@ -539,11 +570,15 @@ def _apply_transaction_search_filters(query: Query, params: dict) -> Query:
         query = query.filter(
             or_(
                 *[
-                    func.lower(Transaction.raw_description).like(f"%{token.lower()}%")
+                    func.lower(Transaction.raw_description).like(
+                        f"%{_escape_like(token.lower())}%", escape="\\"
+                    )
                     for token in raw_descriptions
                 ],
                 *[
-                    _normalized_expr(Transaction.raw_description).like(f"%{token}%")
+                    _normalized_expr(Transaction.raw_description).like(
+                        f"%{_escape_like(token)}%", escape="\\"
+                    )
                     for token in normalized_tokens
                 ]
             )
@@ -557,11 +592,15 @@ def _apply_transaction_search_filters(query: Query, params: dict) -> Query:
                 TransactionLine.transaction_id == Transaction.id,
                 or_(
                     *[
-                        func.lower(TransactionLine.recipient).like(f"%{token.lower()}%")
+                        func.lower(TransactionLine.recipient).like(
+                            f"%{_escape_like(token.lower())}%", escape="\\"
+                        )
                         for token in recipients
                     ],
                     *[
-                        _normalized_expr(TransactionLine.recipient).like(f"%{token}%")
+                        _normalized_expr(TransactionLine.recipient).like(
+                            f"%{_escape_like(token)}%", escape="\\"
+                        )
                         for token in normalized_tokens
                     ],
                 ),
