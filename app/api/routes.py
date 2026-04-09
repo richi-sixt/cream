@@ -3,10 +3,18 @@
 from datetime import date
 
 from flask import jsonify, request, abort
-from sqlalchemy import desc, extract, func, nulls_last
+from sqlalchemy import and_, case, desc, exists, extract, func, nulls_last, or_
+from sqlalchemy.orm import Query
 
 from app.api import bp
-from app.models import Account, Category, Invoice, InvoiceTitleRule, Transaction
+from app.models import (
+    Account,
+    Category,
+    Invoice,
+    InvoiceTitleRule,
+    Transaction,
+    TransactionLine,
+)
 from app import db
 
 
@@ -62,6 +70,124 @@ def list_transactions():
 
     txs = q.limit(500).all()
     return jsonify([t.to_dict() for t in txs])
+
+
+@bp.route("/transactions/search", methods=["GET"])
+def search_transactions():
+    """Advanced transaction search with grouping and aggregate totals."""
+    params = _parse_tx_search_params(request.args)
+    group_by = params["group_by"]
+
+    totals_query = (
+        db.session.query(
+            func.coalesce(
+                func.sum(case((Transaction.type == "income", Transaction.amount), else_=0.0)),
+                0.0,
+            ).label("income"),
+            func.coalesce(
+                func.sum(case((Transaction.type == "expense", Transaction.amount), else_=0.0)),
+                0.0,
+            ).label("expense"),
+            func.count(Transaction.id).label("count"),
+        )
+        .select_from(Transaction)
+        .join(Account, Account.id == Transaction.account_id)
+    )
+    totals_query = _apply_transaction_search_filters(totals_query, params)
+    income_total, expense_total, tx_count = totals_query.one()
+    income_total = float(income_total or 0.0)
+    expense_total = float(expense_total or 0.0)
+
+    response: dict = {
+        "totals": {
+            "positive": round(income_total, 2),
+            "negative": round(expense_total, 2),
+            "sum": round(income_total - expense_total, 2),
+            "count": int(tx_count or 0),
+        },
+        "group_by": group_by or "",
+    }
+
+    if not group_by:
+        tx_query = (
+            Transaction.query.join(Account, Account.id == Transaction.account_id)
+            .order_by(desc(Transaction.date), desc(Transaction.id))
+        )
+        tx_query = _apply_transaction_search_filters(tx_query, params)
+        rows = tx_query.limit(1000).all()
+        response["rows"] = [tx.to_dict() for tx in rows]
+        return jsonify(response)
+
+    if group_by == "recipient":
+        amount_expr = func.coalesce(TransactionLine.amount, Transaction.amount)
+        grouped_query = (
+            db.session.query(
+                func.coalesce(TransactionLine.recipient, "(No recipient)").label("group_value"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == "income", amount_expr), else_=0.0)),
+                    0.0,
+                ).label("income"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == "expense", amount_expr), else_=0.0)),
+                    0.0,
+                ).label("expense"),
+                func.count().label("row_count"),
+            )
+            .select_from(Transaction)
+            .join(Account, Account.id == Transaction.account_id)
+            .outerjoin(TransactionLine, TransactionLine.transaction_id == Transaction.id)
+        )
+        grouped_query = _apply_transaction_search_filters(grouped_query, params)
+        grouped_query = grouped_query.group_by(func.coalesce(TransactionLine.recipient, "(No recipient)"))
+    else:
+        group_map = {
+            "account": Account.name,
+            "raw_description": Transaction.raw_description,
+            "category": func.coalesce(Category.name, "Uncategorized"),
+            "year": func.strftime("%Y", Transaction.date),
+            "month": func.strftime("%m", Transaction.date),
+        }
+        group_expr = group_map.get(group_by)
+        if group_expr is None:
+            abort(400, "Invalid group_by value")
+
+        grouped_query = (
+            db.session.query(
+                group_expr.label("group_value"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == "income", Transaction.amount), else_=0.0)),
+                    0.0,
+                ).label("income"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == "expense", Transaction.amount), else_=0.0)),
+                    0.0,
+                ).label("expense"),
+                func.count(Transaction.id).label("row_count"),
+            )
+            .select_from(Transaction)
+            .join(Account, Account.id == Transaction.account_id)
+            .outerjoin(Category, Category.id == Transaction.category_id)
+        )
+        grouped_query = _apply_transaction_search_filters(grouped_query, params)
+        grouped_query = grouped_query.group_by(group_expr)
+
+    grouped_rows = []
+    for r in grouped_query.all():
+        income = float(r.income or 0.0)
+        expense = float(r.expense or 0.0)
+        grouped_rows.append(
+            {
+                "group": r.group_value or "—",
+                "positive": round(income, 2),
+                "negative": round(expense, 2),
+                "sum": round(income - expense, 2),
+                "count": int(r.row_count or 0),
+            }
+        )
+
+    grouped_rows.sort(key=lambda row: abs(row["sum"]), reverse=True)
+    response["rows"] = grouped_rows
+    return jsonify(response)
 
 
 @bp.route("/invoices/<int:inv_id>", methods=["PATCH"])
@@ -343,3 +469,104 @@ def _category_depth(cat: Category) -> int:
         depth += 1
         cursor = cursor.parent
     return depth
+
+
+def _parse_csv_ints(raw: str) -> list[int]:
+    values: list[int] = []
+    for part in (raw or "").split(","):
+        token = part.strip()
+        if not token:
+            continue
+        try:
+            values.append(int(token))
+        except ValueError:
+            continue
+    return values
+
+
+def _parse_csv_strings(raw: str) -> list[str]:
+    values: list[str] = []
+    for part in (raw or "").replace(";", ",").split(","):
+        token = part.strip()
+        if token:
+            values.append(token)
+    return values
+
+
+def _normalize_search_token(value: str) -> str:
+    return "".join(ch for ch in (value or "").lower() if ch.isalnum())
+
+
+def _normalized_expr(column_expr):
+    normalized = func.lower(column_expr)
+    for char in (" ", ".", ",", "-", "_", "/", "\\", "'", '"', "&", "(", ")", ":", ";"):
+        normalized = func.replace(normalized, char, "")
+    return normalized
+
+
+def _parse_tx_search_params(args) -> dict:
+    return {
+        "account_ids": _parse_csv_ints(args.get("account_ids", "")),
+        "category_ids": _parse_csv_ints(args.get("category_ids", "")),
+        "years": _parse_csv_ints(args.get("years", "")),
+        "months": _parse_csv_ints(args.get("months", "")),
+        "raw_descriptions": _parse_csv_strings(args.get("raw_descriptions", "")),
+        "recipients": _parse_csv_strings(args.get("recipients", "")),
+        "group_by": (args.get("group_by", "") or "").strip(),
+    }
+
+
+def _apply_transaction_search_filters(query: Query, params: dict) -> Query:
+    account_ids = params.get("account_ids") or []
+    category_ids = params.get("category_ids") or []
+    years = [y for y in (params.get("years") or []) if 1900 <= y <= 2200]
+    months = [m for m in (params.get("months") or []) if 1 <= m <= 12]
+    raw_descriptions = params.get("raw_descriptions") or []
+    recipients = params.get("recipients") or []
+
+    if account_ids:
+        query = query.filter(Transaction.account_id.in_(account_ids))
+    if category_ids:
+        query = query.filter(Transaction.category_id.in_(category_ids))
+    if years:
+        query = query.filter(extract("year", Transaction.date).in_(years))
+    if months:
+        query = query.filter(extract("month", Transaction.date).in_(months))
+
+    if raw_descriptions:
+        normalized_tokens = [_normalize_search_token(token) for token in raw_descriptions]
+        normalized_tokens = [token for token in normalized_tokens if token]
+        query = query.filter(
+            or_(
+                *[
+                    func.lower(Transaction.raw_description).like(f"%{token.lower()}%")
+                    for token in raw_descriptions
+                ],
+                *[
+                    _normalized_expr(Transaction.raw_description).like(f"%{token}%")
+                    for token in normalized_tokens
+                ]
+            )
+        )
+
+    if recipients:
+        normalized_tokens = [_normalize_search_token(token) for token in recipients]
+        normalized_tokens = [token for token in normalized_tokens if token]
+        recipient_filter = exists().where(
+            and_(
+                TransactionLine.transaction_id == Transaction.id,
+                or_(
+                    *[
+                        func.lower(TransactionLine.recipient).like(f"%{token.lower()}%")
+                        for token in recipients
+                    ],
+                    *[
+                        _normalized_expr(TransactionLine.recipient).like(f"%{token}%")
+                        for token in normalized_tokens
+                    ],
+                ),
+            )
+        )
+        query = query.filter(recipient_filter)
+
+    return query

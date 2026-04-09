@@ -151,6 +151,7 @@ class Transaction(db.Model):
         return {
             "id":              self.id,
             "account_id":      self.account_id,
+            "account_name":    self.account.name if self.account else None,
             "date":            self.date.isoformat(),
             "raw_description": self.raw_description,
             "title":           self.title,

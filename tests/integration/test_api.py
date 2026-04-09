@@ -76,6 +76,11 @@ class TestDashboard:
         r = client.get("/")
         assert b"C.R.E.A.M." in r.data
 
+    def test_search_page_returns_200(self, client):
+        r = client.get("/search")
+        assert r.status_code == 200
+        assert b"Erweiterte Suche & Filter" in r.data
+
 
 # ── Import Endpoint ───────────────────────────────────────────────────────────
 
@@ -537,6 +542,114 @@ class TestTransactionApi:
         data = json.loads(r.data)
         assert len(data) == 1
         assert data[0]["category_id"] == cat_b.id
+
+
+class TestTransactionSearchApi:
+    def test_search_totals_and_group_by_account(self, client, db):
+        account_a = _create_account(db, name="Account A", iban="CH901")
+        account_b = _create_account(db, name="Account B", iban="CH902")
+        db.session.commit()
+        _create_transaction(
+            db,
+            import_hash="s_acc_income",
+            account_id=account_a.id,
+            date=date(2026, 1, 3),
+            amount=200.0,
+            type="income",
+            raw_description="Salary",
+        )
+        _create_transaction(
+            db,
+            import_hash="s_acc_expense",
+            account_id=account_a.id,
+            date=date(2026, 1, 10),
+            amount=50.0,
+            type="expense",
+            raw_description="Groceries",
+        )
+        _create_transaction(
+            db,
+            import_hash="s_acc_other",
+            account_id=account_b.id,
+            date=date(2026, 2, 10),
+            amount=20.0,
+            type="expense",
+            raw_description="Transport",
+        )
+
+        r = client.get("/api/transactions/search?years=2026&group_by=account")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["totals"]["positive"] == 200.0
+        assert data["totals"]["negative"] == 70.0
+        assert data["totals"]["sum"] == 130.0
+        groups = {row["group"]: row for row in data["rows"]}
+        assert "Account A" in groups
+        assert "Account B" in groups
+        assert groups["Account A"]["sum"] == 150.0
+
+    def test_search_filters_by_recipient(self, client, db):
+        from app.models import TransactionLine
+
+        tx_with_line = _create_transaction(
+            db,
+            import_hash="s_line_match",
+            raw_description="Bulk payment",
+            amount=120.0,
+            type="expense",
+        )
+        tx_without_line = _create_transaction(
+            db,
+            import_hash="s_line_other",
+            raw_description="Card purchase",
+            amount=45.0,
+            type="expense",
+        )
+        db.session.add(
+            TransactionLine(
+                transaction_id=tx_with_line.id,
+                position=0,
+                recipient="Recipient Match",
+                amount=120.0,
+                iban="CH001122334455",
+            )
+        )
+        db.session.commit()
+
+        r = client.get("/api/transactions/search?recipients=Match")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["totals"]["count"] == 1
+        ids = [row["id"] for row in data["rows"]]
+        assert tx_with_line.id in ids
+        assert tx_without_line.id not in ids
+
+    def test_search_recipient_normalization_matches_spacing_variants(self, client, db):
+        from app.models import TransactionLine
+
+        tx = _create_transaction(
+            db,
+            import_hash="s_line_norm",
+            raw_description="Bulk payment",
+            amount=90.0,
+            type="expense",
+        )
+        db.session.add(
+            TransactionLine(
+                transaction_id=tx.id,
+                position=0,
+                recipient="M. von Arx GmbH",
+                amount=90.0,
+                iban="CH999000000000",
+            )
+        )
+        db.session.commit()
+
+        r = client.get("/api/transactions/search?recipients=vonArx")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        ids = [row["id"] for row in data["rows"]]
+        assert tx.id in ids
 
 
 # ── Dashboard Filters ───────────────────────────────────────────────────────────

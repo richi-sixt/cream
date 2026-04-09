@@ -29,6 +29,7 @@
   .tabs{display:flex;gap:4px;padding:0 32px;border-bottom:1px solid var(--border)}
   .tab-btn{padding:11px 22px;background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
   .tab-btn.active{color:var(--text);border-bottom-color:var(--blue);font-weight:600}
+  .tab-link{text-decoration:none;display:inline-block}
   .tab-content{display:none;padding:22px 32px}
   .tab-content.active{display:block}
 

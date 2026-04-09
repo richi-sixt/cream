@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C.R.E.A.M. | Suche & Filter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%92%B0%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='main/dashboard.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='main/search.css') }}">
+</head>
+<body>
+<header>
+  <div>
+    <h1>🔎 Erweiterte Suche & Filter</h1>
+    <div class="meta">Kontobewegungen analysieren und gruppieren</div>
+  </div>
+  <div class="header-actions">
+    <a class="btn" href="/">← Dashboard</a>
+  </div>
+</header>
+
+<div class="tabs">
+  <a class="tab-btn tab-link" href="/">📊 Dashboard</a>
+  <a class="tab-btn tab-link active" href="/search">🔎 Suche & Filter</a>
+</div>
+
+<main class="search-page">
+  <section class="search-panel">
+    <div class="search-grid">
+      <div>
+        <label>Konto (multi)</label>
+        <select id="f-accounts" multiple size="6">
+          {% for acc in accounts %}
+          <option value="{{ acc.id }}">{{ acc.name }}{% if acc.iban %} · {{ acc.iban }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Kategorie (multi)</label>
+        <select id="f-categories" multiple size="6">
+          {% for cat in category_options %}
+          <option value="{{ cat.id }}">{{ cat.path }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Jahr (multi)</label>
+        <select id="f-years" multiple size="6">
+          {% for y in available_years %}
+          <option value="{{ y }}">{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Monat (multi)</label>
+        <select id="f-months" multiple size="6">
+          {% for m in available_months %}
+          <option value="{{ m|int }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Original Buchungstext (single/multi, getrennt mit ;)</label>
+        <input id="f-raw" type="text" placeholder="z.B. Migros;SBB" autocomplete="off">
+        <div id="raw-suggest" class="suggest-box"></div>
+      </div>
+
+      <div>
+        <label>Empfänger aus Positionen (single/multi, getrennt mit ;)</label>
+        <input id="f-recipient" type="text" placeholder="z.B. Empfänger A;Empfänger B" autocomplete="off">
+        <div id="recipient-suggest" class="suggest-box"></div>
+      </div>
+
+      <div>
+        <label>Gruppieren nach</label>
+        <select id="f-group-by">
+          <option value="">Keine Gruppierung (Einzelbuchungen)</option>
+          <option value="account">Konto</option>
+          <option value="raw_description">Original Buchungstext</option>
+          <option value="recipient">Empfänger</option>
+          <option value="category">Kategorie</option>
+          <option value="year">Jahr</option>
+          <option value="month">Monat</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="search-actions">
+      <button id="run-search" class="btn btn-primary">Suchen</button>
+      <button id="reset-search" class="btn">Reset</button>
+    </div>
+  </section>
+
+  <section class="kpi-bar search-kpis">
+    <div class="kpi green">
+      <label>Total positiv</label>
+      <div class="val" id="kpi-positive">CHF 0.00</div>
+    </div>
+    <div class="kpi red">
+      <label>Total negativ</label>
+      <div class="val" id="kpi-negative">CHF 0.00</div>
+    </div>
+    <div class="kpi blue">
+      <label>Summe</label>
+      <div class="val" id="kpi-sum">CHF 0.00</div>
+    </div>
+    <div class="kpi purple">
+      <label>Treffer</label>
+      <div class="val" id="kpi-count">0</div>
+    </div>
+  </section>
+
+  <section class="search-results-wrap">
+    <table class="search-results" id="results-table">
+      <thead id="results-head"></thead>
+      <tbody id="results-body">
+        <tr><td class="empty">Noch keine Suche ausgeführt.</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<script src="{{ url_for('static', filename='main/search.js') }}"></script>
+<script id="raw-options-data" type="application/json">{{ raw_description_options|tojson }}</script>
+<script id="recipient-options-data" type="application/json">{{ recipient_options|tojson }}</script>
+</body>
+</html>

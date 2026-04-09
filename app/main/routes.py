@@ -10,7 +10,7 @@ from sqlalchemy import desc, extract, func, nulls_last, select
 
 from app import db
 from app.main import bp
-from app.models import Account, Category, Invoice, Transaction
+from app.models import Account, Category, Invoice, Transaction, TransactionLine
 
 
 def _category_path(cat: Category) -> str:
@@ -182,6 +182,50 @@ def trigger_import():
     from app.importers import run_full_import
     stats = run_full_import()
     return jsonify({"ok": True, "stats": stats})
+
+
+@bp.route("/search")
+def search_page():
+    """Render advanced transaction search and filter view."""
+    accounts = Account.query.order_by(Account.name).all()
+    categories = Category.query.order_by(Category.name).all()
+    category_options = [
+        {"id": c.id, "name": c.name, "path": _category_path(c)}
+        for c in categories
+    ]
+    category_options.sort(key=lambda c: c["path"].lower())
+
+    years = [
+        y for y in db.session.query(func.strftime("%Y", Transaction.date)).distinct().all()
+        if y[0]
+    ]
+    available_years = sorted([y[0] for y in years], reverse=True)
+    available_months = [f"{m:02d}" for m in range(1, 13)]
+
+    description_rows = (
+        db.session.query(Transaction.raw_description)
+        .distinct()
+        .order_by(Transaction.raw_description.asc())
+        .limit(300)
+        .all()
+    )
+    recipient_rows = (
+        db.session.query(TransactionLine.recipient)
+        .distinct()
+        .order_by(TransactionLine.recipient.asc())
+        .limit(300)
+        .all()
+    )
+
+    return render_template(
+        "main/search.html",
+        accounts=accounts,
+        category_options=category_options,
+        available_years=available_years,
+        available_months=available_months,
+        raw_description_options=[row[0] for row in description_rows if row[0]],
+        recipient_options=[row[0] for row in recipient_rows if row[0]],
+    )
 
 
 @bp.route("/open-pdf/<path:filename>")
