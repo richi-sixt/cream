@@ -61,6 +61,12 @@ because — well — cash rules everything around us.
   - safe delete when unused
   - hierarchy with parent/child paths (for example `Energie/Gas`)
 
+### Search & Filter
+- Advanced transaction search and filter view.
+- Multi-Select account, category, year & amount
+- Text filter for description, recipients with pattern matching
+- Group result by account, category, description, recipients, year or month
+
 ---
 
 ## Project Story
@@ -131,4 +137,4 @@ pytest -q
 
 For full documentation and workflow details, see:
 
-- [PROJECT TUTORIAL](./PROJECT_TUTORIAL.md)
+- [ ] Update
