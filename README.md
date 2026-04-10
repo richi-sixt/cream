@@ -36,19 +36,25 @@ because — well — cash rules everything around us.
 
 ### Bank imports
 
+
 - Dedicated importers for BEKB, PostFinance and Revolut
 - Recursive document discovery in `03-Bewegungen/` (bank subfolders supported)
 - Multi-account support via IBAN-aware matching
 - Duplicate protection with stable import hashes
 - Repair and normalization CLI helpers for legacy PostFinance imports
 
+![Transactions](docs/screenshots/dashboard-kontobewegungen.png)
+
 ### Invoice imports
+
 
 - Import from pending and paid folders
 - Parse amount, due date, invoice date, and issuer from Swiss invoice/QR PDFs
 - Manual correction directly in UI (title, amount, due date, status, category)
 - Delete single invoice DB entries for clean re-import testing
 - Remember title rules per issuer, including category defaults
+
+![Invoice](docs/screenshots/dashboard-rechnungen.png)
 
 ### Categories
 
@@ -61,11 +67,15 @@ because — well — cash rules everything around us.
   - safe delete when unused
   - hierarchy with parent/child paths (for example `Energie/Gas`)
 
+![Categories](docs/screenshots/dashboard-kategorien.png)
+
 ### Search & Filter
 - Advanced transaction search and filter view.
 - Multi-Select account, category, year & amount
 - Text filter for description, recipients with pattern matching
 - Group result by account, category, description, recipients, year or month
+
+![Search & Filter](docs/screenshots/suchen-filtern.png)
 
 ---
 
@@ -133,8 +143,8 @@ pytest -q
 
 ---
 
-## Documentation
+## Links
 
-For full documentation and workflow details, see:
+- [Documentation](https://playground.sixt.services/journal/2026-04-10-cream-docs/)
+- [Live Demo](https://cream-demo.sixt.services/)
 
-- [ ] Update
