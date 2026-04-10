@@ -91,18 +91,16 @@ With AI support, I was finally able to complete robust importer/parser flows for
 
 ## Setup
 
-### 1. Create and activate virtual environment
+### 1. Create and install dependencies
 
 ```bash
+git clone git@github.com:richi-sixt/cream.git
+cd cream
 python -m venv .venv
 source .venv/bin/activate
-```
 
-### 2. Install dependencies
-
-```bash
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt # optional: dev tools + test dependencies
 ```
 
 ### 3. Configure environment
