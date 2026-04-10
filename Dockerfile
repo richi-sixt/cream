@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn fpdf2
 
 COPY . .
 
+ENV PYTHONPATH=/app
+
 # Generate demo PDFs + seed DB on build
 RUN python demo/init_demo.py
 
