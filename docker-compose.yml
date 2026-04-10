@@ -1,0 +1,18 @@
+services:
+  cream:
+    build: .
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=change-this-in-production
+      - SERVE_PDF_INLINE=true
+      - PENDENT_DIR=/app/demo/example/01-Rechnungen-Pendent
+      - BEZAHLT_DIR=/app/demo/example/02-Rechnungen-Bezahlt
+      - BEWEGUNGEN_DIR=/app/demo/example/03-Bewegungen
+    volumes:
+      - cream_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  cream_data:

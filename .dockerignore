@@ -1,0 +1,9 @@
+.venv/
+.git/
+.env.local
+data/cream.db
+reports/
+__pycache__/
+*.pyc
+.pytest_cache/
+.codex/

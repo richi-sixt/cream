@@ -3,15 +3,16 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.coverage
 
-# Datenbank (persönliche Daten — niemals committen!)
+# Databases (personal data and CLI reports — never commit!)
 reports/
 data/
 *.db
 *.sqlite
 migrations/
 
-# Umgebungsvariablen (Secrets)
+# Enviroment variables (secrets)
 .env
 .env.local
 
